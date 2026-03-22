@@ -1,0 +1,52 @@
+@page "/login"
+@using TikTokTracker.Web.Services
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject IConfiguration Config
+@inject NavigationManager NavManager
+
+<PageTitle>Admin Login</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title text-center mb-4">Admin Login</h3>
+                
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger">@errorMessage</div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" @bind="password" class="form-control" />
+                </div>
+                
+                <button class="btn btn-primary w-100" @onclick="HandleLogin">Login</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string password = "";
+    private string errorMessage = "";
+
+    private void HandleLogin()
+    {
+        var expected = Config.GetValue<string>("AdminPassword");
+        var provider = (SimpleAuthStateProvider)AuthStateProvider;
+        
+        provider.Login(password, expected);
+
+        var authState = provider.GetAuthenticationStateAsync().Result;
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            NavManager.NavigateTo("/admin");
+        }
+        else
+        {
+            errorMessage = "Invalid password";
+        }
+    }
+}
