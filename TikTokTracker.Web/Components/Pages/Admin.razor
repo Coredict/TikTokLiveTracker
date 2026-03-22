@@ -1,15 +1,29 @@
 @page "/admin"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
-@inject AppDbContext DbContext
+@using TikTokTracker.Web.Services
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AdminSessionService AdminSession
+@inject NavigationManager NavManager
 
 <PageTitle>Admin Panel</PageTitle>
+
+@if (!AdminSession.IsAdmin)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">
+            You must be logged in as admin to access this page. <a href="/login">Login here</a>.
+        </div>
+    </div>
+    return;
+}
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Admin Panel - Tracked Accounts</h2>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="Logout">Logout</button>
     </div>
 
     <div class="card mb-4 shadow-sm">
@@ -19,6 +33,10 @@
                 <input type="text" class="form-control" @bind="newUsername" placeholder="TikTok Username (without @@)" />
                 <button class="btn btn-success" @onclick="AddAccount">Add Account</button>
             </div>
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="mt-2 alert alert-info py-1">@statusMessage</div>
+            }
         </div>
     </div>
 
@@ -28,17 +46,18 @@
                 <tr>
                     <th>Username</th>
                     <th>Status</th>
+                    <th>Coins</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @if (accounts == null)
                 {
-                    <tr><td colspan="3" class="text-center">Loading...</td></tr>
+                    <tr><td colspan="4" class="text-center">Loading...</td></tr>
                 }
                 else if (!accounts.Any())
                 {
-                    <tr><td colspan="3" class="text-center">No accounts tracked.</td></tr>
+                    <tr><td colspan="4" class="text-center">No accounts tracked yet.</td></tr>
                 }
                 else
                 {
@@ -56,6 +75,7 @@
                                     <span class="badge bg-secondary">Offline</span>
                                 }
                             </td>
+                            <td>@account.CurrentCoins.ToString("N0")</td>
                             <td>
                                 <button class="btn btn-danger btn-sm" @onclick="() => RemoveAccount(account)">
                                     <i class="bi bi-trash"></i> Remove
@@ -70,8 +90,9 @@
 </div>
 
 @code {
-    private List<TikTokAccount> accounts = new();
+    private List<TikTokAccount>? accounts;
     private string newUsername = "";
+    private string statusMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -80,7 +101,8 @@
 
     private async Task LoadAccounts()
     {
-        accounts = await DbContext.Accounts.ToListAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        accounts = await db.Accounts.ToListAsync();
     }
 
     private async Task AddAccount()
@@ -88,20 +110,38 @@
         if (!string.IsNullOrWhiteSpace(newUsername))
         {
             var username = newUsername.Trim().Replace("@", "");
-            if (!await DbContext.Accounts.AnyAsync(a => a.Username == username))
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (!await db.Accounts.AnyAsync(a => a.Username == username))
             {
-                DbContext.Accounts.Add(new TikTokAccount { Username = username });
-                await DbContext.SaveChangesAsync();
+                db.Accounts.Add(new TikTokAccount { Username = username });
+                await db.SaveChangesAsync();
                 newUsername = "";
+                statusMessage = $"@{username} added!";
                 await LoadAccounts();
+            }
+            else
+            {
+                statusMessage = $"@{username} is already being tracked.";
             }
         }
     }
 
     private async Task RemoveAccount(TikTokAccount account)
     {
-        DbContext.Accounts.Remove(account);
-        await DbContext.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.Accounts.FindAsync(account.Id);
+        if (existing != null)
+        {
+            db.Accounts.Remove(existing);
+            await db.SaveChangesAsync();
+        }
+        statusMessage = $"@{account.Username} removed.";
         await LoadAccounts();
+    }
+
+    private void Logout()
+    {
+        AdminSession.Logout();
+        NavManager.NavigateTo("/");
     }
 }

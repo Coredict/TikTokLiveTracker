@@ -1,8 +1,9 @@
 @page "/"
+@rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbFactory
 @implements IDisposable
 
 <PageTitle>TikTok Tracker Dashboard</PageTitle>
@@ -15,7 +16,11 @@
         </a>
     </div>
 
-    @if (accounts == null)
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else if (accounts == null)
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status">
@@ -27,7 +32,7 @@
     else if (!accounts.Any())
     {
         <div class="alert alert-info shadow-sm">
-            <i class="bi bi-info-circle me-2"></i> No accounts are currently being tracked. 
+            <i class="bi bi-info-circle me-2"></i> No accounts are currently being tracked.
             <a href="/admin" class="alert-link">Add some in the Admin panel</a>.
         </div>
     }
@@ -39,7 +44,7 @@
                 <div class="col">
                     <div class="card h-100 shadow-sm border-0 bg-light">
                         <div class="card-body position-relative">
-                            
+
                             @if (account.IsOnline)
                             {
                                 <span class="position-absolute top-0 end-0 mt-3 me-3 text-danger d-flex align-items-center fw-bold">
@@ -49,7 +54,7 @@
                             }
                             else
                             {
-                                <span class="position-absolute top-0 end-0 mt-3 me-3 text-secondary badge bg-light border text-dark">
+                                <span class="position-absolute top-0 end-0 mt-3 me-3 badge bg-light border text-dark">
                                     OFFLINE
                                 </span>
                             }
@@ -91,14 +96,14 @@
 </div>
 
 @code {
-    private List<TikTokAccount> accounts;
-    private System.Threading.Timer _timer;
+    private List<TikTokAccount>? accounts;
+    private string? errorMessage;
+    private System.Threading.Timer? _timer;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadDataAsync();
-        
-        // Refresh UI every 5 seconds to show real-time updates from background service
+
         _timer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
@@ -111,7 +116,15 @@
 
     private async Task LoadDataAsync()
     {
-        accounts = await DbContext.Accounts.AsNoTracking().ToListAsync();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            accounts = await db.Accounts.AsNoTracking().ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load accounts: {ex.Message}";
+        }
     }
 
     public void Dispose()
