@@ -1,10 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using TikTokLiveSharp;
+using System.Collections.Concurrent;
 using TikTokLiveSharp.Client;
-using TikTokLiveSharp.Events;
 using TikTokTracker.Web.Data;
 using TikTokTracker.Web.Models;
-using System.Collections.Concurrent;
 
 namespace TikTokTracker.Web.Services;
 
@@ -12,12 +10,22 @@ public class TikTokTrackerService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TikTokTrackerService> _logger;
-    private readonly ConcurrentDictionary<string, TikTokLiveClient> _clients = new();
+    private readonly HttpClient _httpClient;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    
+    // Tracks active WebSocket gift listeners
+    private readonly ConcurrentDictionary<string, TikTokLiveClient> _liveClients = new();
 
-    public TikTokTrackerService(IServiceProvider serviceProvider, ILogger<TikTokTrackerService> logger)
+    public TikTokTrackerService(
+        IServiceProvider serviceProvider,
+        ILogger<TikTokTrackerService> logger,
+        IHttpClientFactory httpClientFactory,
+        IDbContextFactory<AppDbContext> dbFactory)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _httpClient = httpClientFactory.CreateClient("TikTok");
+        _dbFactory = dbFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -26,103 +34,161 @@ public class TikTokTrackerService : BackgroundService
         {
             try
             {
-                await SyncAccountsAsync(stoppingToken);
+                await PollAllAccountsAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // App is shutting down gracefully
+                break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing TikTok accounts.");
+                _logger.LogError(ex, "Error in TikTok polling loop.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
-    private async Task SyncAccountsAsync(CancellationToken cancellationToken)
+    private async Task PollAllAccountsAsync(CancellationToken cancellationToken)
     {
-        using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var accounts = await db.Accounts.ToListAsync(cancellationToken);
-        var accountUsernames = accounts.Select(a => a.Username).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Remove clients that are no longer in the DB
-        var toRemove = _clients.Keys.Where(k => !accountUsernames.Contains(k)).ToList();
-        foreach (var user in toRemove)
+        // Clean up WebSocket clients for accounts no longer in DB
+        var knownUsernames = accounts.Select(a => a.Username).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var user in _liveClients.Keys.Where(k => !knownUsernames.Contains(k)).ToList())
         {
-            if (_clients.TryRemove(user, out var client))
-            {
-                try { client.Stop(); } catch { }
-            }
+            if (_liveClients.TryRemove(user, out var c)) try { _ = c.Stop(); } catch { }
         }
 
-        // Add clients that are new in the DB and try starting them
         foreach (var account in accounts)
         {
-            if (!_clients.ContainsKey(account.Username))
+            var (isLive, viewerCount) = await CheckIsLiveAsync(account.Username);
+
+            if (isLive && !_liveClients.ContainsKey(account.Username))
             {
-                StartTracking(account.Username);
+                // Account just went live – connect WebSocket to track gifts
+                StartGiftTracking(account.Username);
             }
+            else if (!isLive && _liveClients.TryRemove(account.Username, out var client))
+            {
+                try { _ = client.Stop(); } catch { }
+            }
+
+            // Update online status and viewer count in DB
+            if (account.IsOnline != isLive || account.ViewerCount != viewerCount)
+            {
+                account.IsOnline = isLive;
+                account.ViewerCount = isLive ? viewerCount : 0;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Fetches TikTok's embedded page JSON (SIGI_STATE) and extracts live status and viewer count.
+    /// </summary>
+    private async Task<(bool IsLive, int ViewerCount)> CheckIsLiveAsync(string username)
+    {
+        try
+        {
+            var url = $"https://www.tiktok.com/@{username}/live";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+            request.Headers.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return (false, 0);
+
+            var html = await response.Content.ReadAsStringAsync();
+
+            // TikTok embeds a JSON state object in the page — find liveRoom.status and liveRoom.liveRoomStats.userCount
+            var sigiMatch = System.Text.RegularExpressions.Regex.Match(
+                html,
+                @"<script id=""SIGI_STATE""[^>]*>(.*?)</script>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (sigiMatch.Success)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(sigiMatch.Groups[1].Value);
+                if (doc.RootElement.TryGetProperty("LiveRoom", out var liveRoomSection))
+                {
+                    foreach (var prop in liveRoomSection.EnumerateObject())
+                    {
+                        if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                            prop.Value.TryGetProperty("liveRoom", out var liveRoom) &&
+                            liveRoom.TryGetProperty("status", out var statusEl))
+                        {
+                            var status = statusEl.GetInt32();
+                            bool isLive = status == 2;
+                            int viewerCount = 0;
+                            
+                            if (isLive && liveRoom.TryGetProperty("liveRoomStats", out var statsEl) && statsEl.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            {
+                                if (statsEl.TryGetProperty("userCount", out var userCountEl))
+                                {
+                                    viewerCount = userCountEl.GetInt32();
+                                }
+                            }
+
+                            _logger.LogInformation("@{Username}: liveRoom.status={Status} (live={IsLive}, viewers={ViewerCount})", username, status, isLive, viewerCount);
+                            return (isLive, viewerCount);
+                        }
+                    }
+                }
+            }
+
+            // Fallback: check for "liveRoom":{"status":2 pattern in raw HTML
+            bool fallback = html.Contains(@"""liveRoom"":{") && System.Text.RegularExpressions.Regex.IsMatch(html, @"""status""\s*:\s*2");
+            _logger.LogInformation("@{Username}: fallback live check = {IsLive}", username, fallback);
+            return (fallback, 0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not check live status for @{Username}", username);
+            return (false, 0);
         }
     }
 
-    private void StartTracking(string username)
+    private void StartGiftTracking(string username)
     {
-        var client = new TikTokLiveClient(username);
+        var client = new TikTokLiveClient(uniqueID: username);
 
-        client.OnConnected += (sender, e) => UpdateAccountStatus(username, isOnline: true);
-        client.OnDisconnected += (sender, e) => UpdateAccountStatus(username, isOnline: false);
-        client.OnGiftRecieved += (sender, e) =>
+        client.OnGift += (sender, e) =>
         {
-            if (e != null)
+            if (e != null && e.Gift != null)
             {
-                var repeat = e.repeatCount > 0 ? e.repeatCount : 1;
+                var repeat = e.Amount > 0 ? (int)e.Amount : 1;
                 AddCoins(username, repeat);
             }
         };
 
-        _clients.TryAdd(username, client);
+        _liveClients.TryAdd(username, client);
 
-        Task.Run(() =>
-        {
-            try
-            {
-                client.Run(new CancellationToken());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, $"Could not start tracking for {username}. They might be offline.");
-                UpdateAccountStatus(username, isOnline: false);
-                _clients.TryRemove(username, out _);
-            }
-        });
-    }
-
-    private void UpdateAccountStatus(string username, bool isOnline)
-    {
         Task.Run(async () =>
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var account = await db.Accounts.FirstOrDefaultAsync(a => a.Username == username);
-                if (account != null)
-                {
-                    account.IsOnline = isOnline;
-                    if (!isOnline)
-                    {
-                        // Optional: Reset views/coins when offline? Or keep it for historical stat?
-                        // Let's keep it for now.
-                        account.ViewerCount = 0;
-                    }
-                    await db.SaveChangesAsync();
-                }
+                await client.RunAsync(new CancellationToken());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to update status for {username}", username);
+                _logger.LogWarning(ex, "Gift tracking WebSocket disconnected for @{Username}", username);
+                _liveClients.TryRemove(username, out _);
             }
         });
+
+        _logger.LogInformation("Started gift tracking WebSocket for @{Username}", username);
     }
 
     private void AddCoins(string username, int coinsToAdd)
@@ -131,8 +197,7 @@ public class TikTokTrackerService : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await using var db = await _dbFactory.CreateDbContextAsync();
                 var account = await db.Accounts.FirstOrDefaultAsync(a => a.Username == username);
                 if (account != null)
                 {
@@ -142,7 +207,7 @@ public class TikTokTrackerService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to add coins for {username}", username);
+                _logger.LogError(ex, "Failed to add coins for {Username}", username);
             }
         });
     }
