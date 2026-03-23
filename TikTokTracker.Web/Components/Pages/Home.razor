@@ -53,16 +53,19 @@
 
                                 @if (account.IsOnline)
                                 {
-                                    <span class="position-absolute top-0 end-0 mt-3 me-3 text-danger d-flex align-items-center fw-bold small">
-                                        <span class="spinner-grow spinner-grow-sm me-2" role="status" aria-hidden="true" style="width: 0.6rem; height: 0.6rem;"></span>
-                                        LIVE
-                                    </span>
+                                    <div class="position-absolute top-0 end-0 mt-3 me-3 d-flex flex-column align-items-end gap-2">
+                                        <span class="badge bg-success shadow-sm">LIVE</span>
+                                        @if (account.IsRecording)
+                                        {
+                                            <span class="badge-rec shadow-sm">
+                                                <span style="font-size: 10px;">●</span> REC
+                                            </span>
+                                        }
+                                    </div>
                                 }
                                 else
                                 {
-                                    <span class="position-absolute top-0 end-0 mt-3 me-3 badge badge-discord">
-                                        OFFLINE
-                                    </span>
+                                    <span class="badge bg-secondary position-absolute top-0 end-0 mt-3 me-3 shadow-sm">OFFLINE</span>
                                 }
 
                                 <div class="d-flex align-items-center mb-3">

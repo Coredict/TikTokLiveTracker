@@ -112,6 +112,9 @@ public class TikTokTrackerService : BackgroundService
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var accounts = await db.Accounts.ToListAsync(cancellationToken);
         
+        // Fetch active recordings from the microservice
+        var activeRecordings = await _recorderClient.GetActiveRecordingsAsync();
+        
         // Only cleanup once per hour to reduce SQL noise
         if (DateTime.UtcNow - _lastCleanupTime > TimeSpan.FromHours(1))
         {
@@ -147,8 +150,11 @@ public class TikTokTrackerService : BackgroundService
                 account.ViewerCount = isLive ? viewerCount : 0;
             }
 
+            // Set recording status (not persisted to DB)
+            account.IsRecording = activeRecordings.Contains(account.Username, StringComparer.OrdinalIgnoreCase);
+
             // New: Trigger recording if AutoRecord is enabled and account is live
-            if (account.AutoRecord && isLive)
+            if (account.AutoRecord && isLive && !account.IsRecording)
             {
                 // Fire and forget recording trigger
                 _ = _recorderClient.StartRecordingAsync(account.Username);

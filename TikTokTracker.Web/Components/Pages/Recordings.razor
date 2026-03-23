@@ -1,0 +1,133 @@
+@page "/recordings"
+@using TikTokTracker.Web.Services
+@inject RecorderClient RecorderClient
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Manage Recordings</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="display-6 text-discord-header">
+            <i class="bi bi-camera-reels me-2"></i>Manage Recordings
+        </h1>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshFiles">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+    </div>
+
+    <div class="fixed-list-container shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-dark mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Filename</th>
+                        <th>Format</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_files == null)
+                    {
+                        <tr>
+                            <td colspan="3" class="text-center py-5">
+                                <div class="spinner-border text-discord-blurple" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else if (!_files.Any())
+                    {
+                        <tr>
+                            <td colspan="3" class="text-center py-5 text-muted">
+                                <i class="bi bi-info-circle me-2"></i>No recordings found.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var file in _files)
+                        {
+                            <tr>
+                                <td class="align-middle fw-medium">
+                                    <span class="text-discord-header">@file</span>
+                                </td>
+                                <td class="align-middle">
+                                    <span class="badge badge-discord">MP4</span>
+                                </td>
+                                <td class="text-end align-middle">
+                                    <div class="btn-group">
+                                        <a href="@RecorderClient.GetDownloadUrl(file)" target="_blank" class="btn btn-discord-blurple btn-sm" download="@file">
+                                            <i class="bi bi-download me-1"></i>Download
+                                        </a>
+                                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteFile(file)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    .text-discord-header { color: var(--discord-text-header); }
+    .text-discord-blurple { color: var(--discord-blurple); }
+    .btn-discord-blurple {
+        background-color: var(--discord-blurple);
+        color: white;
+        border: none;
+    }
+    .btn-discord-blurple:hover {
+        background-color: #4752c4;
+        color: white;
+    }
+    
+    /* Reuse global styles if possible, but localized for this page */
+    .fixed-list-container {
+        min-height: 400px;
+        background-color: var(--discord-bg-darker);
+        border-radius: 8px;
+        padding: 0;
+        overflow: hidden;
+    }
+    
+    .table-dark {
+        background-color: var(--discord-bg-darker);
+    }
+    
+    .table-light {
+        --bs-table-bg: var(--discord-bg-deep);
+        --bs-table-color: var(--discord-text-header);
+        border-bottom: 2px solid var(--discord-bg-main);
+    }
+</style>
+
+@code {
+    private List<string>? _files;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshFiles();
+    }
+
+    private async Task RefreshFiles()
+    {
+        _files = null; // Show loader
+        _files = await RecorderClient.ListRecordingsAsync();
+    }
+
+    private async Task DeleteFile(string filename)
+    {
+        var success = await RecorderClient.DeleteRecordingAsync(filename);
+        if (success)
+        {
+            await RefreshFiles();
+        }
+    }
+}

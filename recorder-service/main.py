@@ -1,43 +1,51 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from recorder import recorder
 import os
 
 app = FastAPI(title="TikTok Live Recorder API")
 
-class RecordRequest(BaseModel):
-    username: str
+RECORDINGS_DIR = "recordings"
 
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "TikTok Live Recorder API is running"}
 
-@app.post("/record")
-async def start_record(request: RecordRequest, background_tasks: BackgroundTasks):
-    username = request.username.strip().replace("@", "")
+# --- RECORDING SESSIONS ---
+
+@app.get("/record")
+async def get_active():
+    """List active recording usernames."""
+    return {"active_recordings": recorder.get_active_recordings()}
+
+@app.post("/record/{username}")
+async def start_record(username: str):
+    """Start recording a user."""
+    username = username.strip().replace("@", "")
     
-    # 1. Check if already recording
+    # Check if already recording
     if username in recorder.get_active_recordings():
         return {"status": "already_recording", "username": username}
 
-    # 2. Fetch stream URL
+    # Fetch stream URL
     stream_url = await recorder.get_stream_url(username)
     if not stream_url:
         raise HTTPException(status_code=404, detail=f"User {username} is offline or stream URL not found.")
 
-    # 3. Start recording
+    # Start recording
     success = recorder.start_recording(username, stream_url)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to start recording process.")
 
     return {
         "status": "recording_started",
-        "username": username,
-        "stream_url": stream_url[:50] + "..." # Truncated for security/cleanliness
+        "username": username
     }
 
 @app.delete("/record/{username}")
 async def stop_record(username: str):
+    """Stop an active recording."""
     username = username.strip().replace("@", "")
     success = recorder.stop_recording(username)
     if not success:
@@ -45,18 +53,38 @@ async def stop_record(username: str):
     
     return {"status": "recording_stopped", "username": username}
 
-@app.get("/recordings/active")
-async def get_active():
-    return {"active_recordings": recorder.get_active_recordings()}
+# --- RECORDED FILES ---
 
-@app.get("/recordings/files")
+@app.get("/recordings")
 async def list_files():
-    recordings_dir = "recordings"
-    if not os.path.exists(recordings_dir):
+    """List saved recorded files."""
+    if not os.path.exists(RECORDINGS_DIR):
         return {"files": []}
     
-    files = [f for f in os.listdir(recordings_dir) if f.endswith(".mp4")]
+    files = [f for f in os.listdir(RECORDINGS_DIR) if f.endswith(".mp4")]
     return {"files": sorted(files, reverse=True)}
+
+@app.get("/recordings/{filename}")
+async def get_file(filename: str):
+    """Download a recorded file."""
+    filepath = os.path.join(RECORDINGS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(filepath, media_type="video/mp4", filename=filename)
+
+@app.delete("/recordings/{filename}")
+async def delete_file(filename: str):
+    """Delete a recorded file."""
+    filepath = os.path.join(RECORDINGS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    try:
+        os.remove(filepath)
+        return {"status": "deleted", "filename": filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
 
 if __name__ == "__main__":
     import uvicorn

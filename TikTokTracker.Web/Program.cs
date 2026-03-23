@@ -115,4 +115,11 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+app.MapGet("/api/recordings/{filename}", async (string filename, RecorderClient recorder) =>
+{
+    var stream = await recorder.GetDownloadStreamAsync(filename);
+    if (stream == null) return Results.NotFound();
+    return Results.Stream(stream, "video/mp4", filename);
+});
+
 app.Run();

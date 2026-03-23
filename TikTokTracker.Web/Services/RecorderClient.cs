@@ -19,12 +19,7 @@ public class RecorderClient
     {
         try
         {
-            var content = new StringContent(
-                JsonSerializer.Serialize(new { username = username }),
-                Encoding.UTF8,
-                "application/json");
-
-            var response = await _httpClient.PostAsync($"{BaseUrl}/record", content);
+            var response = await _httpClient.PostAsync($"{BaseUrl}/record/{username}", null);
             
             if (response.IsSuccessStatusCode)
             {
@@ -64,4 +59,80 @@ public class RecorderClient
             _logger.LogError(ex, "Error calling recorder API to stop @{Username}", username);
         }
     }
+
+    public async Task<List<string>> GetActiveRecordingsAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"{BaseUrl}/record");
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<ActiveRecordingsResponse>(body, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return result?.ActiveRecordings ?? new List<string>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching active recordings");
+        }
+        return new List<string>();
+    }
+
+    public async Task<List<string>> ListRecordingsAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"{BaseUrl}/recordings");
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<FilesResponse>(body, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return result?.Files ?? new List<string>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing recording files");
+        }
+        return new List<string>();
+    }
+
+    public async Task<bool> DeleteRecordingAsync(string filename)
+    {
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"{BaseUrl}/recordings/{filename}");
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting recording: {Filename}", filename);
+            return false;
+        }
+    }
+
+    public async Task<Stream?> GetDownloadStreamAsync(string filename)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"{BaseUrl}/recordings/{filename}", HttpCompletionOption.ResponseHeadersRead);
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsStreamAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error streaming recording: {Filename}", filename);
+        }
+        return null;
+    }
+
+    public string GetDownloadUrl(string filename) => $"/api/recordings/{filename}";
+
+    private class ActiveRecordingsResponse { public List<string> ActiveRecordings { get; set; } = new(); }
+    private class FilesResponse { public List<string> Files { get; set; } = new(); }
 }
