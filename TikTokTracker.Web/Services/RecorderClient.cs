@@ -1,5 +1,5 @@
-using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TikTokTracker.Web.Services;
 
@@ -133,6 +133,6 @@ public class RecorderClient
 
     public string GetDownloadUrl(string filename) => $"/api/recordings/{filename}";
 
-    private class ActiveRecordingsResponse { public List<string> ActiveRecordings { get; set; } = new(); }
+    private class ActiveRecordingsResponse { [JsonPropertyName("active_recordings")] public List<string> ActiveRecordings { get; set; } = new(); }
     private class FilesResponse { public List<string> Files { get; set; } = new(); }
 }
