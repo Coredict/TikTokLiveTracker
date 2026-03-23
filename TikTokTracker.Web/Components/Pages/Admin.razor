@@ -4,6 +4,8 @@
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
 @using TikTokTracker.Web.Services
+@using Radzen
+@using Radzen.Blazor
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject TikTokTrackerService TrackerService
 @inject AdminSessionService AdminSession
@@ -13,92 +15,82 @@
 
 <PageTitle>Admin Panel</PageTitle>
 
-@if (!AdminSession.IsAdmin)
+@if (AdminSession.IsAdmin)
 {
-    <div class="container mt-4">
-        <div class="alert alert-danger">
-            You must be logged in as admin to access this page. <a href="/login">Login here</a>.
-        </div>
-    </div>
-    return;
-}
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-4">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenIcon Icon="admin_panel_settings" Style="font-size: 2rem;" />
+            <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="Admin Panel" />
+        </RadzenStack>
+        <RadzenButton Text="Logout" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Variant="Variant.Outlined" Click="@Logout" />
+    </RadzenStack>
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4 text-white">
-        <h2 class="fw-bold">Admin Panel</h2>
-        <button class="btn btn-outline-secondary btn-sm" @onclick="Logout">Logout</button>
-    </div>
+    <RadzenCard class="rz-mb-4">
+        <RadzenText TextStyle="TextStyle.H6" Text="Add New Account" class="rz-mb-3" />
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+            <input @bind="newUsername" placeholder="TikTok Username (without @@)" class="rz-textbox rz-flex-grow-1" />
+            <RadzenButton Text="Add" ButtonStyle="ButtonStyle.Success" Click="@AddAccount" />
+        </RadzenStack>
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="rz-mt-2 rz-p-2">
+                @statusMessage
+            </RadzenAlert>
+        }
+    </RadzenCard>
 
-    <div class="card mb-4 border-0 shadow-sm" style="background-color: var(--discord-bg-darker); color: var(--discord-text);">
-        <div class="card-body">
-            <h5 class="card-title text-white mb-3">Add New Account</h5>
-            <div class="input-group">
-                <input type="text" class="form-control border-0 text-white" style="background-color: var(--discord-bg-deep);" @bind="newUsername" placeholder="TikTok Username (without @@)" />
-                <button class="btn btn-success px-4" @onclick="AddAccount">Add</button>
-            </div>
-            @if (!string.IsNullOrEmpty(statusMessage))
-            {
-                <div class="mt-2 alert alert-info py-1">@statusMessage</div>
-            }
-        </div>
-    </div>
-
-    <div class="table-responsive rounded-3 overflow-hidden" style="background-color: var(--discord-bg-darker);">
-        <table class="table table-hover align-middle mb-0" style="color: var(--discord-text);">
-            <thead style="background-color: var(--discord-bg-deep); color: var(--discord-text-header);">
-                <tr>
-                    <th>Username</th>
-                    <th>Status</th>
-                    <th>Auto-Record</th>
-                    <th>Coins</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (accounts == null)
-                {
-                    <tr><td colspan="4" class="text-center">Loading...</td></tr>
-                }
-                else if (!accounts.Any())
-                {
-                    <tr><td colspan="4" class="text-center">No accounts tracked yet.</td></tr>
-                }
-                else
-                {
-                    @foreach (var account in accounts)
+    <RadzenDataGrid Data="@accounts" TItem="TikTokAccount" AllowPaging="false" Density="Density.Default" class="rz-border-radius-1">
+        <Columns>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Username">
+                <Template Context="account">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenIcon Icon="account_circle" />
+                        <strong>@("@" + account.Username)</strong>
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Status" Width="120px">
+                <Template Context="account">
+                    @if (account.IsOnline)
                     {
-                        <tr>
-                            <td><strong>@account.Username</strong></td>
-                            <td>
-                                @if (account.IsOnline)
-                                {
-                                    <span class="badge bg-success">Online</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">Offline</span>
-                                }
-                            </td>
-                            <td>
-                                <div class="form-check form-switch m-0">
-                                    <input class="form-check-input" type="checkbox" id="record-@account.Id" 
-                                           checked="@account.AutoRecord" 
-                                           @onchange="@(e => ToggleAutoRecord(account, e))">
-                                </div>
-                            </td>
-                            <td>@account.CurrentCoins.ToString("N0")</td>
-                            <td>
-                                <button class="btn btn-outline-danger btn-sm border-0" @onclick="() => RemoveAccount(account)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
+                        <RadzenBadge Text="Online" BadgeStyle="BadgeStyle.Success" IsPill="true" />
                     }
-                }
-            </tbody>
-        </table>
+                    else
+                    {
+                        <RadzenBadge Text="Offline" BadgeStyle="BadgeStyle.Secondary" IsPill="true" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Auto-Record" Width="150px" TextAlign="TextAlign.Center">
+                <Template Context="account">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Center" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenSwitch TValue="bool" Value="@account.AutoRecord" Change="@(v => OnToggleAccount(v, account))" />
+                        <RadzenText Text="@(account.AutoRecord ? "ON" : "OFF")" TextStyle="TextStyle.Caption" class="rz-m-0" />
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Coins Today" Width="140px" TextAlign="TextAlign.Right">
+                <Template Context="account">
+                    <RadzenText TextStyle="TextStyle.Body1" class="rz-color-warning">💎 @account.CurrentCoins.ToString("N0")</RadzenText>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Actions" Width="100px" TextAlign="TextAlign.Center">
+                <Template Context="account">
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Text" Click="@(args => OnRemoveAccount(args, account))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
+else
+{
+    <div class="rz-p-12 rz-text-align-center">
+        <RadzenIcon Icon="lock" Style="font-size: 4rem; color: var(--rz-danger);" />
+        <RadzenText TextStyle="TextStyle.H5" Text="Access Denied" class="rz-mt-4" />
+        <RadzenText TextStyle="TextStyle.Body1" Text="You must be logged in as admin to access this page." />
+        <RadzenButton Text="Login here" ButtonStyle="ButtonStyle.Primary" class="rz-mt-4" Click="@(() => NavManager.NavigateTo("/login"))" />
     </div>
-</div>
+}
 
 @code {
     private List<TikTokAccount>? accounts;
@@ -108,26 +100,59 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAccounts();
-
-        _timer = new System.Threading.Timer(async _ =>
+        if (AdminSession.IsAdmin)
         {
-            await InvokeAsync(async () =>
-            {
-                await LoadAccounts();
-                StateHasChanged();
-            });
-        }, null, 1000, 1000);
+            await LoadAccounts();
+            _timer = new System.Threading.Timer(OnTimerCallback, null, 1000, 1000);
+        }
     }
 
     private async Task LoadAccounts()
     {
-        // Use in-memory cache for status display
         accounts = TrackerService.CachedAccounts.ToList();
         await Task.CompletedTask;
     }
 
-    private async Task AddAccount()
+    private void OnTimerCallback(object? state)
+    {
+        InvokeAsync(async () =>
+        {
+            await LoadAccounts();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnToggleAccount(bool isChecked, TikTokAccount account)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.Accounts.FindAsync(account.Id);
+        if (existing != null)
+        {
+            existing.AutoRecord = isChecked;
+            await db.SaveChangesAsync();
+            
+            // Critical: Also update the cached version so the live tracker picks it up immediately
+            var cached = TrackerService.CachedAccounts.FirstOrDefault(a => a.Id == account.Id);
+            if (cached != null) cached.AutoRecord = isChecked;
+            
+            statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
+        }
+    }
+
+    private async Task OnRemoveAccount(MouseEventArgs args, TikTokAccount account)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.Accounts.FindAsync(account.Id);
+        if (existing != null)
+        {
+            db.Accounts.Remove(existing);
+            await db.SaveChangesAsync();
+            await LoadAccounts();
+        }
+        statusMessage = $"@{account.Username} removed.";
+    }
+
+    private async Task AddAccount(MouseEventArgs args)
     {
         if (!string.IsNullOrWhiteSpace(newUsername))
         {
@@ -148,40 +173,7 @@
         }
     }
 
-    private async Task ToggleAutoRecord(TikTokAccount account, ChangeEventArgs e)
-    {
-        var isChecked = (bool)(e.Value ?? false);
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.Accounts.FindAsync(account.Id);
-        if (existing != null)
-        {
-            existing.AutoRecord = isChecked;
-            await db.SaveChangesAsync();
-            
-            // Sync with service cache
-            var cached = TrackerService.CachedAccounts.FirstOrDefault(a => a.Id == account.Id);
-            if (cached != null) cached.AutoRecord = isChecked;
-            
-            statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
-        }
-    }
-
-    private async Task RemoveAccount(TikTokAccount account)
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.Accounts.FindAsync(account.Id);
-        if (existing != null)
-        {
-            db.Accounts.Remove(existing);
-            await db.SaveChangesAsync();
-            
-            // Trigger cache refresh
-            await LoadAccounts();
-        }
-        statusMessage = $"@{account.Username} removed.";
-    }
-
-    private void Logout()
+    private void Logout(MouseEventArgs args)
     {
         AdminSession.Logout();
         NavManager.NavigateTo("/");

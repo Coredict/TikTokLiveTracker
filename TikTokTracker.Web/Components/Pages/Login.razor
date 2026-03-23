@@ -1,37 +1,45 @@
 @page "/login"
 @rendermode InteractiveServer
 @using TikTokTracker.Web.Services
+@using Radzen
+@using Radzen.Blazor
 @inject AdminSessionService AdminSession
 @inject IConfiguration Config
 @inject NavigationManager NavManager
 
 <PageTitle>Admin Login</PageTitle>
 
-<div class="row justify-content-center mt-5">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm" style="background-color: var(--discord-bg-darker); color: var(--discord-text);">
-            <div class="card-body p-4">
-                <h3 class="card-title text-center mb-4 text-white"><i class="bi bi-shield-lock"></i> Admin Login</h3>
+<RadzenRow JustifyContent="JustifyContent.Center" class="rz-mt-12">
+    <RadzenColumn Size="12" SizeMD="4">
+        <RadzenCard class="rz-p-8">
+            <RadzenStack AlignItems="AlignItems.Center" Gap="1.5rem">
+                <RadzenIcon Icon="lock" Style="font-size: 3rem;" />
+                <RadzenText TextStyle="TextStyle.H5" Text="Admin Login" class="rz-m-0" />
 
                 @if (!string.IsNullOrEmpty(errorMessage))
                 {
-                    <div class="alert alert-danger py-2">@errorMessage</div>
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" class="rz-w-100">@errorMessage</RadzenAlert>
                 }
 
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Password</label>
-                    <input type="password" @bind="password" @onkeyup="OnKeyUp" class="form-control border-0 text-white" style="background-color: var(--discord-bg-deep);" />
-                </div>
+                <RadzenStack Gap="0.5rem" class="rz-w-100">
+                    <RadzenText TextStyle="TextStyle.Overline" Text="Password" class="rz-m-0" />
+                    <RadzenPassword Value="@password" Change="@(v => password = v.ToString() ?? "")" @onkeyup="OnKeyUp" class="rz-w-100" />
+                </RadzenStack>
 
-                <button class="btn btn-primary w-100 fw-bold py-2" @onclick="HandleLogin">Login</button>
-            </div>
-        </div>
-    </div>
-</div>
+                <RadzenButton Text="Login" ButtonStyle="ButtonStyle.Primary" class="rz-w-100" Click="@HandleLogin" />
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenColumn>
+</RadzenRow>
 
 @code {
     private string password = "";
     private string errorMessage = "";
+
+    private void OnPasswordChange(string value)
+    {
+        password = value;
+    }
 
     private async Task OnKeyUp(KeyboardEventArgs e)
     {
