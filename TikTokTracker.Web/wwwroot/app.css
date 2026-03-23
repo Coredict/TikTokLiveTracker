@@ -1,5 +1,22 @@
+:root {
+    --discord-bg-main: #313338;
+    --discord-bg-lighter: #383a40;
+    --discord-bg-darker: #2b2d31;
+    --discord-bg-deep: #1e1f22;
+    --discord-text: #dbdee1;
+    --discord-text-muted: #949ba4;
+    --discord-text-header: #ffffff;
+    --discord-blurple: #5865f2;
+    --discord-blurple-hover: #4752c4;
+    --discord-danger: #f23f42;
+    --discord-warning: #f0b232;
+    --discord-success: #23a559;
+}
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background-color: var(--discord-bg-main);
+    color: var(--discord-text);
+    font-family: 'GG Sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 a, .btn-link {
@@ -8,8 +25,13 @@ a, .btn-link {
 
 .btn-primary {
     color: #fff;
-    background-color: #1b6ec2;
-    border-color: #1861ac;
+    background-color: var(--discord-blurple);
+    border-color: var(--discord-blurple);
+}
+
+.btn-primary:hover {
+    background-color: var(--discord-blurple-hover);
+    border-color: var(--discord-blurple-hover);
 }
 
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {

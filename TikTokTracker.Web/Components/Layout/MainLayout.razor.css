@@ -1,24 +1,29 @@
 .page {
-    position: relative;
-    display: flex;
-    flex-direction: column;
+    background-color: var(--discord-bg-main);
+    min-height: 100vh;
 }
 
-main {
-    flex: 1;
+.app-header {
+    background-color: var(--discord-bg-deep);
+    height: 56px;
+    border-bottom: 1px solid var(--discord-bg-darker);
 }
 
-.sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+.header-brand {
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
 }
 
-.top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
-    height: 3.5rem;
-    display: flex;
-    align-items: center;
+.nav-link-custom {
+    color: var(--discord-text-muted);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: color 0.1s;
+}
+
+.nav-link-custom:hover {
+    color: var(--discord-text-header);
 }
 
     .top-row ::deep a, .top-row ::deep .btn-link {

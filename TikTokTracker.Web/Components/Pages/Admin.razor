@@ -24,17 +24,17 @@
 }
 
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Admin Panel - Tracked Accounts</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4 text-white">
+        <h2 class="fw-bold">Admin Panel</h2>
         <button class="btn btn-outline-secondary btn-sm" @onclick="Logout">Logout</button>
     </div>
 
-    <div class="card mb-4 shadow-sm">
+    <div class="card mb-4 border-0 shadow-sm" style="background-color: var(--discord-bg-darker); color: var(--discord-text);">
         <div class="card-body">
-            <h5 class="card-title">Add New Account</h5>
+            <h5 class="card-title text-white mb-3">Add New Account</h5>
             <div class="input-group">
-                <input type="text" class="form-control" @bind="newUsername" placeholder="TikTok Username (without @@)" />
-                <button class="btn btn-success" @onclick="AddAccount">Add Account</button>
+                <input type="text" class="form-control border-0 text-white" style="background-color: var(--discord-bg-deep);" @bind="newUsername" placeholder="TikTok Username (without @@)" />
+                <button class="btn btn-success px-4" @onclick="AddAccount">Add</button>
             </div>
             @if (!string.IsNullOrEmpty(statusMessage))
             {
@@ -43,9 +43,9 @@
         </div>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle">
-            <thead class="table-dark">
+    <div class="table-responsive rounded-3 overflow-hidden" style="background-color: var(--discord-bg-darker);">
+        <table class="table table-hover align-middle mb-0" style="color: var(--discord-text);">
+            <thead style="background-color: var(--discord-bg-deep); color: var(--discord-text-header);">
                 <tr>
                     <th>Username</th>
                     <th>Status</th>
@@ -80,8 +80,8 @@
                             </td>
                             <td>@account.CurrentCoins.ToString("N0")</td>
                             <td>
-                                <button class="btn btn-danger btn-sm" @onclick="() => RemoveAccount(account)">
-                                    <i class="bi bi-trash"></i> Remove
+                                <button class="btn btn-outline-danger btn-sm border-0" @onclick="() => RemoveAccount(account)">
+                                    <i class="bi bi-trash"></i>
                                 </button>
                             </td>
                         </tr>

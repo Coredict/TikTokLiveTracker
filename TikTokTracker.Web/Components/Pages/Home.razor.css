@@ -1,0 +1,92 @@
+.account-card {
+    background-color: var(--discord-bg-darker);
+    border: none;
+    border-radius: 8px;
+    color: var(--discord-text);
+    transition: background-color 0.2s;
+}
+
+.account-card:hover {
+    background-color: var(--discord-bg-lighter);
+}
+
+.card-title {
+    color: var(--discord-text-header);
+}
+
+.text-warning {
+    color: var(--discord-warning) !important;
+}
+
+.text-info {
+    color: var(--discord-blurple) !important;
+}
+
+.btn-danger {
+    background-color: var(--discord-danger);
+    border: none;
+}
+
+.btn-danger:hover {
+    background-color: #c03537;
+}
+
+.btn-outline-secondary {
+    color: var(--discord-text);
+    border-color: #4e5058;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #4e5058;
+    color: #fff;
+}
+
+/* Fixed size list containers */
+.fixed-list-container {
+    min-height: 520px; /* Adjust based on 10 rows + header */
+    background-color: var(--discord-bg-darker);
+    border-radius: 8px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-responsive {
+    flex-grow: 1;
+}
+
+.table {
+    margin-bottom: 0;
+    color: var(--discord-text);
+}
+
+.table-light {
+    --bs-table-bg: var(--discord-bg-deep);
+    --bs-table-color: var(--discord-text-header);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--discord-bg-lighter);
+    color: var(--discord-text-header);
+}
+
+.pagination .page-link {
+    background-color: var(--discord-bg-deep);
+    border-color: var(--discord-bg-main);
+    color: var(--discord-text);
+}
+
+.pagination .page-item.disabled .page-link {
+    background-color: var(--discord-bg-main);
+    color: var(--discord-text-muted);
+}
+
+.pagination .page-item:not(.disabled) .page-link:hover {
+    background-color: var(--discord-blurple);
+    color: #fff;
+}
+
+.form-check-input:checked {
+    background-color: var(--discord-success);
+    border-color: var(--discord-success);
+}
