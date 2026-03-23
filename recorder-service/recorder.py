@@ -11,9 +11,9 @@ except ImportError:
     try:
         from TikTokLive.client.errors import LiveNotFound, UserOffline
     except ImportError:
-        # Final fallback and log warning
-        LiveNotFound = Exception
-        UserOffline = Exception
+        # Define unique classes so we don't catch all Exceptions
+        class LiveNotFound(Exception): pass
+        class UserOffline(Exception): pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
