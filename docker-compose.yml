@@ -34,6 +34,8 @@ services:
       dockerfile: Dockerfile
     container_name: tiktoktracker-recorder
     restart: always
+    environment:
+      - TIKTOK_SESSION_ID=e4fcc9a348f1427818b6cabe40aef5a9
     ports:
       - "8000:8000"
     volumes:

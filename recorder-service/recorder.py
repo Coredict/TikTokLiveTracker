@@ -6,14 +6,14 @@ import logging
 from datetime import datetime
 from TikTokLive import TikTokLiveClient
 try:
-    from TikTokLive.errors import LiveNotFound, UserOffline
+    from TikTokLive.client.errors import LiveNotFound, UserOffline, AgeRestrictedError
 except ImportError:
     try:
-        from TikTokLive.client.errors import LiveNotFound, UserOffline
+        from TikTokLive.errors import LiveNotFound, UserOffline, AgeRestrictedError
     except ImportError:
-        # Define unique classes so we don't catch all Exceptions
         class LiveNotFound(Exception): pass
         class UserOffline(Exception): pass
+        class AgeRestrictedError(Exception): pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,51 +23,68 @@ os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
 class TikTokRecorder:
     def __init__(self):
-        self.active_recordings = {}
+        self.active_recordings: dict[str, dict] = {}
 
     async def get_stream_url(self, username: str):
         """Fetch the stream URL for a given TikTok username."""
-        client = TikTokLiveClient(unique_id=username)
+        session_id = os.environ.get("TIKTOK_SESSION_ID")
+        
+        # --- Method 1: yt-dlp (Robust) ---
         try:
-            # We don't need to connect indefinitely, just fetch room info
-            room_info = await client.fetch_room_info()
+            import yt_dlp
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            }
+            if session_id:
+                headers['Cookie'] = f'sessionid={session_id}'
+
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'http_headers': headers
+            }
             
-            if not room_info or not hasattr(room_info, 'stream_url') or not room_info.stream_url:
-                logger.error(f"Could not find stream URL for {username}")
+            loop = asyncio.get_event_loop()
+            def extract_info():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(f"https://www.tiktok.com/@{username}/live", download=False)
+            
+            info = await loop.run_in_executor(None, extract_info)
+            if info and 'url' in info:
+                logger.info(f"Found URL for {username} via yt-dlp: {info.get('url')[:50]}...")
+                return info['url']
+        except Exception as e:
+            logger.warning(f"yt-dlp failed to get stream URL for {username}: {e}")
+
+        # --- Method 2: TikTokLive (Fallback) ---
+        logger.info(f"Falling back to TikTokLive for {username}")
+        client = TikTokLiveClient(unique_id=username)
+        if session_id:
+            if hasattr(client.web, 'set_session'):
+                client.web.set_session(session_id, None)
+            elif hasattr(client.web, 'set_session_id'):
+                client.web.set_session_id(session_id)
+        
+        try:
+            room_id = await client.web.fetch_room_id_from_api(username)
+            if not room_id:
+                return None
+                
+            room_info = await client.web.fetch_room_info(room_id)
+            if not room_info:
                 return None
 
-            stream_data = room_info.stream_url
+            stream_data = getattr(room_info, 'stream_url', None) or (room_info.get('stream_url') if isinstance(room_info, dict) else None)
+            if not stream_data:
+                return None
             
-            # In v6, stream_url might be a dict-like or have specific attributes
-            # We'll try to get the HLS or FLV URL
-            hls_url = stream_data.get('hls_pull_url') or stream_data.get('rtmp_pull_url')
-            if hls_url:
-                return hls_url
-                
-            # Try to parse the complex structure if direct pull URLs are missing
-            pull_data = stream_data.get('live_core_sdk_data', {}).get('pull_data', {})
-            stream_options = pull_data.get('stream_data', {})
-            
-            import json
-            try:
-                if isinstance(stream_options, str):
-                    stream_options = json.loads(stream_options)
-                
-                data = stream_options.get('data', {})
-                for quality, formats in data.items():
-                    main_urls = formats.get('main', {})
-                    if main_urls.get('hls'): return main_urls.get('hls')
-                    if main_urls.get('flv'): return main_urls.get('flv')
-            except:
-                pass
+            if isinstance(stream_data, dict):
+                return stream_data.get('hls_pull_url') or stream_data.get('rtmp_pull_url')
+            else:
+                return getattr(stream_data, 'hls_pull_url', None) or getattr(stream_data, 'rtmp_pull_url', None)
 
-            return None
-
-        except (LiveNotFound, UserOffline):
-            logger.info(f"User {username} is offline or doesn't exist.")
-            return None
         except Exception as e:
-            logger.exception(f"Error fetching room info for {username}: {e}")
+            logger.error(f"TikTokLive fallback failed for {username}: {e}")
             return None
 
     def start_recording(self, username: str, stream_url: str):
@@ -80,11 +97,6 @@ class TikTokRecorder:
         filename = f"{username}_{timestamp}.mp4"
         filepath = os.path.join(RECORDINGS_DIR, filename)
 
-        # FFmpeg command to record from URL to MP4
-        # -i: Input URL
-        # -c copy: Copy codecs (no re-encoding, fast and low CPU)
-        # -f mp4: Force MP4 format
-        # -y: Overwrite output file if exists
         command = [
             "ffmpeg",
             "-i", stream_url,
@@ -121,14 +133,12 @@ class TikTokRecorder:
 
         process = recording["process"]
         try:
-            # Try to stop gracefully with 'q' command to FFmpeg vs killing it
-            # But process.send_signal(signal.SIGINT) is usually enough for FFmpeg to finalize the MP4
             if hasattr(os, 'killpg'):
                 os.killpg(os.getpgid(process.pid), signal.SIGINT)
             else:
-                process.send_signal(signal.CTRL_C_EVENT if hasattr(signal, 'CTRL_C_EVENT') else signal.SIGINT)
+                sig = getattr(signal, 'CTRL_C_EVENT', signal.SIGINT)
+                process.send_signal(sig)
             
-            # Wait for process to exit
             process.wait(timeout=10)
             logger.info(f"Stopped recording for {username}")
         except Exception as e:
@@ -140,7 +150,6 @@ class TikTokRecorder:
 
     def get_active_recordings(self):
         """Return a list of active recording usernames."""
-        # Clean up finished processes
         to_remove = []
         for username, data in self.active_recordings.items():
             if data["process"].poll() is not None:

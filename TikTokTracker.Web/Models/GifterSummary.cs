@@ -11,6 +11,9 @@ public class GifterSummary
     public TikTokAccount? Account { get; set; }
 
     [Required]
+    public string SenderUserId { get; set; } = string.Empty;
+
+    [Required]
     public string SenderUsername { get; set; } = string.Empty;
 
     [Required]
