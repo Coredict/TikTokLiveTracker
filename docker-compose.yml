@@ -28,6 +28,18 @@ services:
     volumes:
       - app-keys:/app/keys
 
+  recorder:
+    build:
+      context: ./recorder-service
+      dockerfile: Dockerfile
+    container_name: tiktoktracker-recorder
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - tiktok-recordings:/app/recordings
+
 volumes:
   pgdata:
   app-keys:
+  tiktok-recordings:
