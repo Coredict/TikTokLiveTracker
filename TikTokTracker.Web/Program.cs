@@ -32,6 +32,23 @@ var app = builder.Build();
 using (var db = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext())
 {
     db.Database.EnsureCreated();
+    
+    // Manually create Gifts table if it doesn't exist (since EnsureCreated won't add it to an existing DB)
+    var sql = @"
+        CREATE TABLE IF NOT EXISTS ""Gifts"" (
+            ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
+            ""TikTokAccountId"" INTEGER NOT NULL,
+            ""SenderUsername"" TEXT NOT NULL,
+            ""SenderNickname"" TEXT NOT NULL,
+            ""GiftName"" TEXT NOT NULL,
+            ""Amount"" INTEGER NOT NULL,
+            ""DiamondCost"" INTEGER NOT NULL,
+            ""Timestamp"" TEXT NOT NULL,
+            CONSTRAINT ""FK_Gifts_Accounts_TikTokAccountId"" FOREIGN KEY (""TikTokAccountId"") REFERENCES ""Accounts"" (""Id"") ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS ""IX_Gifts_TikTokAccountId"" ON ""Gifts"" (""TikTokAccountId"");
+    ";
+    db.Database.ExecuteSqlRaw(sql);
 }
 
 // Configure the HTTP request pipeline.

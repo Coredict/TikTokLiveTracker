@@ -48,7 +48,7 @@ public class TikTokTrackerService : BackgroundService
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -168,8 +168,18 @@ public class TikTokTrackerService : BackgroundService
         {
             if (e != null && e.Gift != null)
             {
-                var repeat = e.Amount > 0 ? (int)e.Amount : 1;
-                AddCoins(username, repeat);
+                var diamondCost = e.Gift.DiamondCost > 0 ? e.Gift.DiamondCost : 1;
+                var currentAmount = e.Amount > 0 ? (int)e.Amount : 1;
+                
+                RecordGift(username, (int)currentAmount, e.Gift.Name, diamondCost, e.Sender.UniqueId, e.Sender.NickName);
+
+                e.OnAmountChanged += (gift, change, newAmount) =>
+                {
+                    if (change > 0)
+                    {
+                        RecordGift(username, (int)change, e.Gift.Name, diamondCost, e.Sender.UniqueId, e.Sender.NickName);
+                    }
+                };
             }
         };
 
@@ -191,23 +201,38 @@ public class TikTokTrackerService : BackgroundService
         _logger.LogInformation("Started gift tracking WebSocket for @{Username}", username);
     }
 
-    private void AddCoins(string username, int coinsToAdd)
+    private void RecordGift(string targetUsername, int amount, string giftName, int diamondCost, string senderUniqueId, string senderNickname)
     {
         Task.Run(async () =>
         {
             try
             {
                 await using var db = await _dbFactory.CreateDbContextAsync();
-                var account = await db.Accounts.FirstOrDefaultAsync(a => a.Username == username);
+                var account = await db.Accounts.FirstOrDefaultAsync(a => a.Username == targetUsername);
                 if (account != null)
                 {
-                    account.CurrentCoins += coinsToAdd;
+                    // Update total coins
+                    account.CurrentCoins += (amount * diamondCost);
+
+                    // Record transaction
+                    var transaction = new GiftTransaction
+                    {
+                        TikTokAccountId = account.Id,
+                        SenderUsername = senderUniqueId,
+                        SenderNickname = senderNickname,
+                        GiftName = giftName,
+                        Amount = amount,
+                        DiamondCost = diamondCost,
+                        Timestamp = DateTime.UtcNow
+                    };
+                    db.Gifts.Add(transaction);
+
                     await db.SaveChangesAsync();
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to add coins for {Username}", username);
+                _logger.LogError(ex, "Failed to record gift for {Username} from {Sender}", targetUsername, senderUniqueId);
             }
         });
     }
