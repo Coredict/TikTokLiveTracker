@@ -5,7 +5,7 @@ import signal
 import logging
 from datetime import datetime
 from TikTokLive import TikTokLiveClient
-from TikTokLive.types.errors import LiveNotFound, UserOffline
+from TikTokLive.errors import LiveNotFound, UserOffline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
