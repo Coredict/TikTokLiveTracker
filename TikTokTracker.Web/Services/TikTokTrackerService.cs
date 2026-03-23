@@ -15,6 +15,7 @@ public class TikTokTrackerService : BackgroundService
     
     // Tracks active WebSocket gift listeners
     private readonly ConcurrentDictionary<string, TikTokLiveClient> _liveClients = new();
+    private DateTime _lastCleanupTime = DateTime.MinValue;
 
     public TikTokTrackerService(
         IServiceProvider serviceProvider,
@@ -62,7 +63,12 @@ public class TikTokTrackerService : BackgroundService
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var accounts = await db.Accounts.ToListAsync(cancellationToken);
         
-        await CleanupExpiredGiftsAsync(db, cancellationToken);
+        // Only cleanup once per hour to reduce SQL noise
+        if (DateTime.UtcNow - _lastCleanupTime > TimeSpan.FromHours(1))
+        {
+            await CleanupExpiredGiftsAsync(db, cancellationToken);
+            _lastCleanupTime = DateTime.UtcNow;
+        }
 
         // Clean up WebSocket clients for accounts no longer in DB
         var knownUsernames = accounts.Select(a => a.Username).ToHashSet(StringComparer.OrdinalIgnoreCase);
