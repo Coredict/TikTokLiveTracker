@@ -34,23 +34,6 @@
     font-weight: 500;
 }
 
-.record-toggle-container {
-    background: var(--discord-bg-deep);
-    border-radius: 20px;
-    padding: 4px 12px 4px 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: -8px;
-}
-
-.record-toggle-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-    color: var(--discord-text-muted);
-}
 
 .btn-danger {
     background-color: var(--discord-danger);

@@ -50,18 +50,6 @@
                         <div class="card h-100 account-card">
                             <div class="card-body position-relative pt-4">
 
-                                <div class="position-absolute top-0 start-0 mt-3 ms-3">
-                                    <div class="record-toggle-container shadow-sm">
-                                        <div class="form-check form-switch m-0 d-flex align-items-center">
-                                            <input class="form-check-input m-0" type="checkbox" id="record-@account.Id" 
-                                                   checked="@account.AutoRecord" 
-                                                   @onchange="@(e => ToggleAutoRecord(account, e))">
-                                        </div>
-                                        <label class="record-toggle-label m-0" for="record-@account.Id">
-                                            Auto-Record
-                                        </label>
-                                    </div>
-                                </div>
 
                                 @if (account.IsOnline)
                                 {
@@ -331,27 +319,6 @@
     // Keep these empty or remove them as they are now handled by RefreshAllData/Cache
     private Task LoadRecentGifts(AppDbContext db) => Task.CompletedTask;
     private Task LoadTopGifters(AppDbContext db) => Task.CompletedTask;
-
-    private async Task ToggleAutoRecord(TikTokAccount account, ChangeEventArgs e)
-    {
-        var isChecked = (bool)(e.Value ?? false);
-        account.AutoRecord = isChecked;
-
-        try
-        {
-            await using var db = await DbFactory.CreateDbContextAsync();
-            var dbAccount = await db.Accounts.FindAsync(account.Id);
-            if (dbAccount != null)
-            {
-                dbAccount.AutoRecord = isChecked;
-                await db.SaveChangesAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error updating auto-record: {ex.Message}";
-        }
-    }
 
     private async Task ChangePage(int newPage)
     {

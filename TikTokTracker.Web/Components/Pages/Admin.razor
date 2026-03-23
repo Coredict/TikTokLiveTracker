@@ -49,6 +49,7 @@
                 <tr>
                     <th>Username</th>
                     <th>Status</th>
+                    <th>Auto-Record</th>
                     <th>Coins</th>
                     <th>Actions</th>
                 </tr>
@@ -77,6 +78,13 @@
                                 {
                                     <span class="badge bg-secondary">Offline</span>
                                 }
+                            </td>
+                            <td>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" id="record-@account.Id" 
+                                           checked="@account.AutoRecord" 
+                                           @onchange="@(e => ToggleAutoRecord(account, e))">
+                                </div>
                             </td>
                             <td>@account.CurrentCoins.ToString("N0")</td>
                             <td>
@@ -140,6 +148,24 @@
         }
     }
 
+    private async Task ToggleAutoRecord(TikTokAccount account, ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.Accounts.FindAsync(account.Id);
+        if (existing != null)
+        {
+            existing.AutoRecord = isChecked;
+            await db.SaveChangesAsync();
+            
+            // Sync with service cache
+            var cached = TrackerService.CachedAccounts.FirstOrDefault(a => a.Id == account.Id);
+            if (cached != null) cached.AutoRecord = isChecked;
+            
+            statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
+        }
+    }
+
     private async Task RemoveAccount(TikTokAccount account)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -148,9 +174,11 @@
         {
             db.Accounts.Remove(existing);
             await db.SaveChangesAsync();
+            
+            // Trigger cache refresh
+            await LoadAccounts();
         }
         statusMessage = $"@{account.Username} removed.";
-        await LoadAccounts();
     }
 
     private void Logout()
