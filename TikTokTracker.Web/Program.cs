@@ -32,6 +32,7 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo("/app/keys"));
 
 builder.Services.AddSingleton<TikTokTrackerService>();
+builder.Services.AddSingleton<RecorderClient>();
 builder.Services.AddHostedService<TikTokTrackerService>(sp => sp.GetRequiredService<TikTokTrackerService>());
 
 var app = builder.Build();
@@ -51,10 +52,16 @@ using (var scope = app.Services.CreateScope())
             ""ProfileImageUrl"" TEXT,
             ""IsOnline"" BOOLEAN NOT NULL,
             ""ViewerCount"" INTEGER NOT NULL,
-            ""CurrentCoins"" INTEGER NOT NULL
+            ""CurrentCoins"" INTEGER NOT NULL,
+            ""AutoRecord"" BOOLEAN NOT NULL DEFAULT FALSE
         );
     ";
     db.Database.ExecuteSqlRaw(accountsSql);
+    
+    // Ensure column exists for already created tables
+    try {
+        db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Accounts"" ADD COLUMN IF NOT EXISTS ""AutoRecord"" BOOLEAN NOT NULL DEFAULT FALSE;");
+    } catch { /* PostgreSQL 9.6+ supports ADD COLUMN IF NOT EXISTS in some cases, otherwise catch if already present */ }
 
     // Gifts table
     var giftsSql = @"

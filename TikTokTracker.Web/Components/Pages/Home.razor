@@ -64,6 +64,15 @@
                                     </span>
                                 }
 
+                                <div class="form-check form-switch position-absolute bottom-0 end-0 mb-3 me-3">
+                                    <input class="form-check-input" type="checkbox" id="record-@account.Id" 
+                                           checked="@account.AutoRecord" 
+                                           @onchange="@(e => ToggleAutoRecord(account, e))">
+                                    <label class="form-check-label small fw-bold text-muted" for="record-@account.Id">
+                                        Record when Live
+                                    </label>
+                                </div>
+
                                 <div class="d-flex align-items-center mb-3">
                                     <div class="bg-primary text-white rounded-circle d-flex justify-content-center align-items-center" style="width: 50px; height: 50px; font-size: 1.5rem;">
                                         @account.Username.FirstOrDefault().ToString().ToUpper()
@@ -318,6 +327,27 @@
     // Keep these empty or remove them as they are now handled by RefreshAllData/Cache
     private Task LoadRecentGifts(AppDbContext db) => Task.CompletedTask;
     private Task LoadTopGifters(AppDbContext db) => Task.CompletedTask;
+
+    private async Task ToggleAutoRecord(TikTokAccount account, ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        account.AutoRecord = isChecked;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var dbAccount = await db.Accounts.FindAsync(account.Id);
+            if (dbAccount != null)
+            {
+                dbAccount.AutoRecord = isChecked;
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating auto-record: {ex.Message}";
+        }
+    }
 
     private async Task ChangePage(int newPage)
     {

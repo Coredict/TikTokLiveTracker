@@ -12,6 +12,7 @@ public class TikTokTrackerService : BackgroundService
     private readonly ILogger<TikTokTrackerService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly RecorderClient _recorderClient;
     
     // Cache for UI
     private readonly List<TikTokAccount> _cachedAccounts = new();
@@ -36,12 +37,14 @@ public class TikTokTrackerService : BackgroundService
         IServiceProvider serviceProvider,
         ILogger<TikTokTrackerService> logger,
         IHttpClientFactory httpClientFactory,
-        IDbContextFactory<AppDbContext> dbFactory)
+        IDbContextFactory<AppDbContext> dbFactory,
+        RecorderClient recorderClient)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient("TikTok");
         _dbFactory = dbFactory;
+        _recorderClient = recorderClient;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -142,6 +145,13 @@ public class TikTokTrackerService : BackgroundService
             {
                 account.IsOnline = isLive;
                 account.ViewerCount = isLive ? viewerCount : 0;
+            }
+
+            // New: Trigger recording if AutoRecord is enabled and account is live
+            if (account.AutoRecord && isLive)
+            {
+                // Fire and forget recording trigger
+                _ = _recorderClient.StartRecordingAsync(account.Username);
             }
         }
 
