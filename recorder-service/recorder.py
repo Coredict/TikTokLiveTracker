@@ -24,39 +24,36 @@ class TikTokRecorder:
             # We don't need to connect indefinitely, just fetch room info
             room_info = await client.fetch_room_info()
             
-            if not room_info or 'stream_url' not in room_info:
+            if not room_info or not hasattr(room_info, 'stream_url') or not room_info.stream_url:
                 logger.error(f"Could not find stream URL for {username}")
                 return None
 
-            # Attempt to get the best quality URL
-            stream_data = room_info['stream_url']
+            stream_data = room_info.stream_url
             
-            # Prefer HLS (m3u8) for stability
+            # In v6, stream_url might be a dict-like or have specific attributes
+            # We'll try to get the HLS or FLV URL
+            hls_url = stream_data.get('hls_pull_url') or stream_data.get('rtmp_pull_url')
+            if hls_url:
+                return hls_url
+                
+            # Try to parse the complex structure if direct pull URLs are missing
             pull_data = stream_data.get('live_core_sdk_data', {}).get('pull_data', {})
             stream_options = pull_data.get('stream_data', {})
             
-            # This bit can be tricky as TikTok changes JSON structure often
-            # We try to find any valid .m3u8 or .flv URL
             import json
             try:
                 if isinstance(stream_options, str):
                     stream_options = json.loads(stream_options)
                 
-                # Look for 'data' -> 'origin' -> 'main' -> 'hls' or 'flv'
                 data = stream_options.get('data', {})
                 for quality, formats in data.items():
                     main_urls = formats.get('main', {})
-                    hls_url = main_urls.get('hls')
-                    if hls_url:
-                        return hls_url
-                    flv_url = main_urls.get('flv')
-                    if flv_url:
-                        return flv_url
-            except Exception as e:
-                logger.warning(f"Failed to parse complex stream data: {e}")
+                    if main_urls.get('hls'): return main_urls.get('hls')
+                    if main_urls.get('flv'): return main_urls.get('flv')
+            except:
+                pass
 
-            # Fallback to simple hls_pull_url if available
-            return stream_data.get('hls_pull_url') or stream_data.get('rtmp_pull_url')
+            return None
 
         except (LiveNotFound, UserOffline):
             logger.info(f"User {username} is offline or doesn't exist.")
