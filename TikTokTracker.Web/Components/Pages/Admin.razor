@@ -171,7 +171,17 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h3>Top Gifters (All Time)</h3>
-        <div>
+        <div class="d-flex align-items-center">
+            <select class="form-select form-select-sm me-2" style="width: auto;" @onchange="OnRecipientChanged">
+                <option value="">All Recipients</option>
+                @if (accounts != null)
+                {
+                    @foreach (var acc in accounts)
+                    {
+                        <option value="@acc.Id">@@@acc.Username</option>
+                    }
+                }
+            </select>
             <button class="btn btn-sm btn-outline-info me-2" @onclick="ExportSummaries">Export JSON</button>
             <button class="btn btn-sm btn-outline-info" @onclick="LoadTopGifters">Refresh Leaderboard</button>
         </div>
@@ -219,6 +229,28 @@
             </tbody>
         </table>
     </div>
+
+    @if (totalSummaryCount > pageSize)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2 px-2 pb-5">
+            <div class="text-muted small">
+                Showing @((currentSummaryPage - 1) * pageSize + 1) to @(Math.Min(currentSummaryPage * pageSize, totalSummaryCount)) of @totalSummaryCount
+            </div>
+            <nav aria-label="Summary navigation">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item @(currentSummaryPage == 1 ? "disabled" : "")">
+                        <button class="page-link shadow-none" @onclick="() => ChangeSummaryPage(currentSummaryPage - 1)">Previous</button>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link text-dark bg-light border-0">Page @currentSummaryPage of @(Math.Ceiling((double)totalSummaryCount / pageSize))</span>
+                    </li>
+                    <li class="page-item @(currentSummaryPage * pageSize >= totalSummaryCount ? "disabled" : "")">
+                        <button class="page-link shadow-none" @onclick="() => ChangeSummaryPage(currentSummaryPage + 1)">Next</button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    }
 </div>
 
 @code {
@@ -233,6 +265,11 @@
     private int currentPage = 1;
     private int pageSize = 10;
     private int totalGiftsCount = 0;
+
+    // Pagination/Filtering for Top Gifters
+    private int? selectedRecipientId;
+    private int currentSummaryPage = 1;
+    private int totalSummaryCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -259,11 +296,40 @@
     private async Task LoadTopGifters()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        topGifters = await db.GifterSummaries
+        
+        var query = db.GifterSummaries.AsQueryable();
+        if (selectedRecipientId.HasValue)
+        {
+            query = query.Where(s => s.TikTokAccountId == selectedRecipientId.Value);
+        }
+
+        totalSummaryCount = await query.CountAsync();
+
+        // Ensure current page is valid
+        var maxPage = (int)Math.Max(1, Math.Ceiling((double)totalSummaryCount / pageSize));
+        if (currentSummaryPage > maxPage) currentSummaryPage = maxPage;
+
+        topGifters = await query
             .Include(g => g.Account)
             .OrderByDescending(g => g.TotalDiamonds)
-            .Take(50)
+            .Skip((currentSummaryPage - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
+    }
+
+    private async Task OnRecipientChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id)) selectedRecipientId = id;
+        else selectedRecipientId = null;
+        
+        currentSummaryPage = 1;
+        await LoadTopGifters();
+    }
+
+    private async Task ChangeSummaryPage(int newPage)
+    {
+        currentSummaryPage = newPage;
+        await LoadTopGifters();
     }
 
     private async Task LoadRecentGifts()
