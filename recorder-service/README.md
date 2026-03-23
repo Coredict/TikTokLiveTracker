@@ -1,5 +1,3 @@
-# TikTok Live Recording Microservice
-
 This microservice provides an API to record TikTok live streams and save them as `.mp4` video files. It is designed to be run as a Docker container.
 
 ## Key Components
