@@ -11,6 +11,7 @@
 @inject AdminSessionService AdminSession
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
+@inject RecorderClient RecorderClient
 @implements IDisposable
 
 <PageTitle>Admin Panel</PageTitle>
@@ -81,6 +82,74 @@
             </RadzenDataGridColumn>
         </Columns>
     </RadzenDataGrid>
+
+    <RadzenText TextStyle="TextStyle.H5" class="rz-mt-8 rz-mb-4">Recording Management</RadzenText>
+    
+    <RadzenCard class="rz-mb-6" Style="border-left: 4px solid var(--rz-danger);">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" class="rz-mb-4">
+            <RadzenIcon Icon="fiber_manual_record" Style="color: var(--rz-danger); font-size: 1.5rem;" />
+            <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Ongoing Recordings</RadzenText>
+        </RadzenStack>
+
+        <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" class="rz-border-radius-1">
+            <EmptyTemplate>
+                <div class="rz-p-4 rz-text-align-center">
+                    <RadzenText TextStyle="TextStyle.Body2" Text="No active recordings at the moment." />
+                </div>
+            </EmptyTemplate>
+            <Columns>
+                <RadzenDataGridColumn TItem="string" Title="Account">
+                    <Template Context="username">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Danger" IsPill="true" />
+                            <strong>@("@" + username)</strong>
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="string" Title="Status">
+                    <Template Context="username">
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Recording in progress..." />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="string" Title="Actions" Width="150px" TextAlign="TextAlign.Right">
+                    <Template Context="username">
+                        <RadzenButton Icon="stop_circle" Text="Stop" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@(args => StopRecording(username))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+
+    <RadzenText TextStyle="TextStyle.H6" class="rz-mb-2">Recorded Files</RadzenText>
+    <RadzenDataGrid Data="@_files" TItem="string" AllowPaging="true" PageSize="10" Density="Density.Compact" class="rz-border-radius-1">
+        <EmptyTemplate>
+            <div class="rz-p-12 rz-text-align-center">
+                <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-secondary-color);" />
+                <RadzenText TextStyle="TextStyle.Subtitle1" Text="No recording files found." />
+            </div>
+        </EmptyTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="string" Title="Filename">
+                <Template Context="file">
+                    <strong>@file</strong>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="string" Title="Format" Width="100px">
+                <Template Context="file">
+                    <RadzenBadge Text="MP4" BadgeStyle="BadgeStyle.Info" IsPill="true" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="string" Title="Actions" Width="220px" TextAlign="TextAlign.Right">
+                <Template Context="file">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+                        <RadzenButton Icon="download" Text="Download" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" 
+                                      Click="@(args => JSRuntime.InvokeVoidAsync("open", RecorderClient.GetDownloadUrl(file), "_blank"))" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(args => DeleteFile(file))" />
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 else
 {
@@ -97,12 +166,16 @@ else
     private string newUsername = "";
     private string statusMessage = "";
     private System.Threading.Timer? _timer;
+    private List<string>? _files;
+    private List<string>? _activeUsernames;
+    private int _refreshTick = 0;
 
     protected override async Task OnInitializedAsync()
     {
         if (AdminSession.IsAdmin)
         {
             await LoadAccounts();
+            await RefreshAllRecordings();
             _timer = new System.Threading.Timer(OnTimerCallback, null, 1000, 1000);
         }
     }
@@ -118,8 +191,43 @@ else
         InvokeAsync(async () =>
         {
             await LoadAccounts();
+            
+            _refreshTick++;
+            if (_refreshTick >= 5)
+            {
+                await RefreshAllRecordings();
+                _refreshTick = 0;
+            }
+            
             StateHasChanged();
         });
+    }
+
+    private async Task RefreshAllRecordings()
+    {
+        _activeUsernames = await RecorderClient.GetActiveRecordingsAsync();
+        _files = await RecorderClient.ListRecordingsAsync();
+    }
+
+    private async Task RefreshFiles()
+    {
+        _files = await RecorderClient.ListRecordingsAsync();
+    }
+
+    private async Task DeleteFile(string filename)
+    {
+        var success = await RecorderClient.DeleteRecordingAsync(filename);
+        if (success)
+        {
+            await RefreshFiles();
+        }
+    }
+
+    private async Task StopRecording(string username)
+    {
+        await RecorderClient.StopRecordingAsync(username);
+        await Task.Delay(500); 
+        await RefreshAllRecordings();
     }
 
     private async Task OnToggleAccount(bool isChecked, TikTokAccount account)
