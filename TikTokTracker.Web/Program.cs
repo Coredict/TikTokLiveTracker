@@ -49,6 +49,23 @@ using (var db = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>
         CREATE INDEX IF NOT EXISTS ""IX_Gifts_TikTokAccountId"" ON ""Gifts"" (""TikTokAccountId"");
     ";
     db.Database.ExecuteSqlRaw(sql);
+
+    // Manually create GifterSummaries table
+    var summarySql = @"
+        CREATE TABLE IF NOT EXISTS ""GifterSummaries"" (
+            ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
+            ""TikTokAccountId"" INTEGER NOT NULL,
+            ""SenderUsername"" TEXT NOT NULL,
+            ""SenderNickname"" TEXT NOT NULL,
+            ""TotalDiamonds"" INTEGER NOT NULL,
+            ""TotalGifts"" INTEGER NOT NULL,
+            ""LastGiftTime"" TEXT NOT NULL,
+            CONSTRAINT ""FK_GifterSummaries_Accounts_TikTokAccountId"" FOREIGN KEY (""TikTokAccountId"") REFERENCES ""Accounts"" (""Id"") ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS ""IX_GifterSummaries_TikTokAccountId"" ON ""GifterSummaries"" (""TikTokAccountId"");
+        CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GifterSummaries_Account_Sender"" ON ""GifterSummaries"" (""TikTokAccountId"", ""SenderUsername"");
+    ";
+    db.Database.ExecuteSqlRaw(summarySql);
 }
 
 // Configure the HTTP request pipeline.

@@ -61,6 +61,8 @@ public class TikTokTrackerService : BackgroundService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var accounts = await db.Accounts.ToListAsync(cancellationToken);
+        
+        await CleanupExpiredGiftsAsync(db, cancellationToken);
 
         // Clean up WebSocket clients for accounts no longer in DB
         var knownUsernames = accounts.Select(a => a.Username).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -92,6 +94,26 @@ public class TikTokTrackerService : BackgroundService
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var expiry = DateTime.UtcNow.AddHours(-24);
+            var expiredCount = await db.Gifts
+                .Where(g => g.Timestamp < expiry)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            if (expiredCount > 0)
+            {
+                _logger.LogInformation("Cleaned up {Count} expired gift transactions older than 24h.", expiredCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error cleaning up expired gifts.");
+        }
     }
 
     /// <summary>
@@ -226,6 +248,31 @@ public class TikTokTrackerService : BackgroundService
                         Timestamp = DateTime.UtcNow
                     };
                     db.Gifts.Add(transaction);
+
+                    // Update or Create GifterSummary
+                    var summary = await db.GifterSummaries.FirstOrDefaultAsync(s => 
+                        s.TikTokAccountId == account.Id && s.SenderUsername == senderUniqueId);
+
+                    if (summary != null)
+                    {
+                        summary.TotalDiamonds += (amount * diamondCost);
+                        summary.TotalGifts += 1;
+                        summary.LastGiftTime = DateTime.UtcNow;
+                        summary.SenderNickname = senderNickname; // Update nickname in case it changed
+                    }
+                    else
+                    {
+                        var newSummary = new GifterSummary
+                        {
+                            TikTokAccountId = account.Id,
+                            SenderUsername = senderUniqueId,
+                            SenderNickname = senderNickname,
+                            TotalDiamonds = (amount * diamondCost),
+                            TotalGifts = 1,
+                            LastGiftTime = DateTime.UtcNow
+                        };
+                        db.GifterSummaries.Add(newSummary);
+                    }
 
                     await db.SaveChangesAsync();
                 }
