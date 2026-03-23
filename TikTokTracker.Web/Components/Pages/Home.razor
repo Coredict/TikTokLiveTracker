@@ -3,7 +3,9 @@
 @using Microsoft.EntityFrameworkCore
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
+@using TikTokTracker.Web.Services
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject TikTokTrackerService TrackerService
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
@@ -280,45 +282,42 @@
     {
         try
         {
-            await using var db = await DbFactory.CreateDbContextAsync();
-            accounts = await db.Accounts.AsNoTracking().ToListAsync();
-            await LoadRecentGifts(db);
-            await LoadTopGifters(db);
+            // Use in-memory cache from the service instead of querying DB
+            var allAccounts = TrackerService.CachedAccounts;
+            var allGifts = TrackerService.CachedRecentGifts;
+            var allSummaries = TrackerService.CachedTopGifters;
+
+            accounts = allAccounts.ToList();
+
+            // Pagination/Filtering in memory for the most recent 50 items stored in cache
+            totalGiftsCount = allGifts.Count;
+            recentGifts = allGifts
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            var summaryQuery = allSummaries.AsQueryable();
+            if (selectedRecipientId.HasValue)
+            {
+                summaryQuery = summaryQuery.Where(s => s.TikTokAccountId == selectedRecipientId.Value);
+            }
+            
+            var filteredSummaries = summaryQuery.ToList();
+            totalSummaryCount = filteredSummaries.Count;
+            topGifters = filteredSummaries
+                .Skip((currentSummaryPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Data error: {ex.Message}";
+            errorMessage = $"Cache error: {ex.Message}";
         }
     }
 
-    private async Task LoadRecentGifts(AppDbContext db)
-    {
-        totalGiftsCount = await db.Gifts.CountAsync();
-        recentGifts = await db.Gifts
-            .AsNoTracking()
-            .Include(g => g.Account)
-            .OrderByDescending(g => g.Timestamp)
-            .Skip((currentPage - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-    }
-
-    private async Task LoadTopGifters(AppDbContext db)
-    {
-        var query = db.GifterSummaries.AsNoTracking().AsQueryable();
-        if (selectedRecipientId.HasValue)
-        {
-            query = query.Where(s => s.TikTokAccountId == selectedRecipientId.Value);
-        }
-
-        totalSummaryCount = await query.CountAsync();
-        topGifters = await query
-            .Include(g => g.Account)
-            .OrderByDescending(g => g.TotalDiamonds)
-            .Skip((currentSummaryPage - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-    }
+    // Keep these empty or remove them as they are now handled by RefreshAllData/Cache
+    private Task LoadRecentGifts(AppDbContext db) => Task.CompletedTask;
+    private Task LoadTopGifters(AppDbContext db) => Task.CompletedTask;
 
     private async Task ChangePage(int newPage)
     {

@@ -27,7 +27,8 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 
 builder.Services.AddScoped<TikTokTracker.Web.Services.AdminSessionService>();
 
-builder.Services.AddHostedService<TikTokTrackerService>();
+builder.Services.AddSingleton<TikTokTrackerService>();
+builder.Services.AddHostedService<TikTokTrackerService>(sp => sp.GetRequiredService<TikTokTrackerService>());
 
 var app = builder.Build();
 

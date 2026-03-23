@@ -5,6 +5,7 @@
 @using TikTokTracker.Web.Models
 @using TikTokTracker.Web.Services
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject TikTokTrackerService TrackerService
 @inject AdminSessionService AdminSession
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
@@ -113,8 +114,9 @@
 
     private async Task LoadAccounts()
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        accounts = await db.Accounts.ToListAsync();
+        // Use in-memory cache for status display
+        accounts = TrackerService.CachedAccounts.ToList();
+        await Task.CompletedTask;
     }
 
     private async Task AddAccount()

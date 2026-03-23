@@ -13,6 +13,12 @@ public class TikTokTrackerService : BackgroundService
     private readonly HttpClient _httpClient;
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     
+    // Cache for UI
+    private readonly List<TikTokAccount> _cachedAccounts = new();
+    private readonly List<GiftTransaction> _cachedRecentGifts = new();
+    private readonly List<GifterSummary> _cachedTopGifters = new();
+    private readonly object _cacheLock = new();
+
     // Tracks active WebSocket gift listeners
     private readonly ConcurrentDictionary<string, TikTokLiveClient> _liveClients = new();
     private DateTime _lastCleanupTime = DateTime.MinValue;
@@ -21,6 +27,10 @@ public class TikTokTrackerService : BackgroundService
     private readonly ConcurrentQueue<GiftTransaction> _giftBuffer = new();
     private DateTime _lastFlushTime = DateTime.UtcNow;
     private const int MaxBufferSize = 500;
+
+    public IReadOnlyList<TikTokAccount> CachedAccounts { get { lock(_cacheLock) return _cachedAccounts.ToList(); } }
+    public IReadOnlyList<GiftTransaction> CachedRecentGifts { get { lock(_cacheLock) return _cachedRecentGifts.ToList(); } }
+    public IReadOnlyList<GifterSummary> CachedTopGifters { get { lock(_cacheLock) return _cachedTopGifters.ToList(); } }
 
     public TikTokTrackerService(
         IServiceProvider serviceProvider,
@@ -36,6 +46,30 @@ public class TikTokTrackerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Initial cache population
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
+            var accounts = await db.Accounts.ToListAsync(stoppingToken);
+            var recentGifts = await db.Gifts.Include(g => g.Account).OrderByDescending(g => g.Timestamp).Take(50).ToListAsync(stoppingToken);
+            var topGifters = await db.GifterSummaries.Include(g => g.Account).OrderByDescending(g => g.TotalDiamonds).Take(50).ToListAsync(stoppingToken);
+            
+            lock (_cacheLock)
+            {
+                _cachedAccounts.Clear();
+                _cachedAccounts.AddRange(accounts);
+                _cachedRecentGifts.Clear();
+                _cachedRecentGifts.AddRange(recentGifts);
+                _cachedTopGifters.Clear();
+                _cachedTopGifters.AddRange(topGifters);
+            }
+            _logger.LogInformation("Initial cache populated: {Acc} accounts, {Gifts} gifts, {Gifters} gifters.", accounts.Count, recentGifts.Count, topGifters.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to populate initial cache.");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -112,6 +146,13 @@ public class TikTokTrackerService : BackgroundService
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // Update cache
+        lock (_cacheLock)
+        {
+            _cachedAccounts.Clear();
+            _cachedAccounts.AddRange(accounts);
+        }
     }
 
     private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
@@ -258,6 +299,13 @@ public class TikTokTrackerService : BackgroundService
 
         _giftBuffer.Enqueue(transaction);
 
+        // Update recent gifts cache immediately
+        lock (_cacheLock)
+        {
+            _cachedRecentGifts.Insert(0, transaction);
+            if (_cachedRecentGifts.Count > 50) _cachedRecentGifts.RemoveAt(50);
+        }
+
         if (_giftBuffer.Count >= MaxBufferSize)
         {
             _ = Task.Run(async () => {
@@ -331,6 +379,19 @@ public class TikTokTrackerService : BackgroundService
 
             _lastFlushTime = DateTime.UtcNow;
             _logger.LogInformation("Batch Flush: {Count} gifts, {SummaryCount} summaries updated.", giftsToSave.Count, summaries.Count());
+
+            // Refresh top gifters cache from DB after flush
+            var topGifters = await db.GifterSummaries
+                .Include(g => g.Account)
+                .OrderByDescending(g => g.TotalDiamonds)
+                .Take(50)
+                .ToListAsync(cancellationToken);
+            
+            lock (_cacheLock)
+            {
+                _cachedTopGifters.Clear();
+                _cachedTopGifters.AddRange(topGifters);
+            }
         }
         catch (Exception ex)
         {
