@@ -8,11 +8,12 @@ from TikTokLive import TikTokLiveClient
 try:
     from TikTokLive.errors import LiveNotFound, UserOffline
 except ImportError:
-    from TikTokLive.client.errors import LiveNotFound, UserOffline
-except ImportError:
-    # Fallback for very specific versions
-    LiveNotFound = Exception
-    UserOffline = Exception
+    try:
+        from TikTokLive.client.errors import LiveNotFound, UserOffline
+    except ImportError:
+        # Final fallback and log warning
+        LiveNotFound = Exception
+        UserOffline = Exception
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
