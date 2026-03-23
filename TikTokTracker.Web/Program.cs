@@ -19,8 +19,11 @@ builder.Services.AddHttpClient("TikTok", client =>
     MaxAutomaticRedirections = 5
 });
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Host=db;Port=5432;Database=tiktoktracker;Username=postgres;Password=postgres";
+
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<TikTokTracker.Web.Services.AdminSessionService>();
 
@@ -28,44 +31,63 @@ builder.Services.AddHostedService<TikTokTrackerService>();
 
 var app = builder.Build();
 
-// Ensure DB is created on startup
-using (var db = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext())
+// Ensure database tables exist (PostgreSQL version)
+using (var scope = app.Services.CreateScope())
 {
-    db.Database.EnsureCreated();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    using var db = dbFactory.CreateDbContext();
     
-    // Manually create Gifts table if it doesn't exist (since EnsureCreated won't add it to an existing DB)
-    var sql = @"
+    // Create tables if they don't exist
+    // Using SERIAL for auto-increment in Postgres
+    var accountsSql = @"
+        CREATE TABLE IF NOT EXISTS ""Accounts"" (
+            ""Id"" SERIAL PRIMARY KEY,
+            ""Username"" TEXT NOT NULL,
+            ""ProfileImageUrl"" TEXT,
+            ""IsOnline"" BOOLEAN NOT NULL,
+            ""ViewerCount"" INTEGER NOT NULL,
+            ""CurrentCoins"" INTEGER NOT NULL
+        );
+    ";
+    db.Database.ExecuteSqlRaw(accountsSql);
+
+    // Gifts table
+    var giftsSql = @"
         CREATE TABLE IF NOT EXISTS ""Gifts"" (
-            ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
+            ""Id"" SERIAL PRIMARY KEY,
             ""TikTokAccountId"" INTEGER NOT NULL,
             ""SenderUsername"" TEXT NOT NULL,
             ""SenderNickname"" TEXT NOT NULL,
             ""GiftName"" TEXT NOT NULL,
             ""Amount"" INTEGER NOT NULL,
             ""DiamondCost"" INTEGER NOT NULL,
-            ""Timestamp"" TEXT NOT NULL,
+            ""Timestamp"" TIMESTAMP WITH TIME ZONE NOT NULL,
             CONSTRAINT ""FK_Gifts_Accounts_TikTokAccountId"" FOREIGN KEY (""TikTokAccountId"") REFERENCES ""Accounts"" (""Id"") ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS ""IX_Gifts_TikTokAccountId"" ON ""Gifts"" (""TikTokAccountId"");
     ";
-    db.Database.ExecuteSqlRaw(sql);
+    db.Database.ExecuteSqlRaw(giftsSql);
 
-    // Manually create GifterSummaries table
+    // GifterSummaries table
     var summarySql = @"
         CREATE TABLE IF NOT EXISTS ""GifterSummaries"" (
-            ""Id"" INTEGER PRIMARY KEY AUTOINCREMENT,
+            ""Id"" SERIAL PRIMARY KEY,
             ""TikTokAccountId"" INTEGER NOT NULL,
             ""SenderUsername"" TEXT NOT NULL,
             ""SenderNickname"" TEXT NOT NULL,
             ""TotalDiamonds"" INTEGER NOT NULL,
             ""TotalGifts"" INTEGER NOT NULL,
-            ""LastGiftTime"" TEXT NOT NULL,
+            ""LastGiftTime"" TIMESTAMP WITH TIME ZONE NOT NULL,
             CONSTRAINT ""FK_GifterSummaries_Accounts_TikTokAccountId"" FOREIGN KEY (""TikTokAccountId"") REFERENCES ""Accounts"" (""Id"") ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS ""IX_GifterSummaries_TikTokAccountId"" ON ""GifterSummaries"" (""TikTokAccountId"");
-        CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GifterSummaries_Account_Sender"" ON ""GifterSummaries"" (""TikTokAccountId"", ""SenderUsername"");
     ";
     db.Database.ExecuteSqlRaw(summarySql);
+    
+    // Add unique index separately as CREATE UNIQUE INDEX IF NOT EXISTS is standard in modern PG
+    try {
+        db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GifterSummaries_Account_Sender"" ON ""GifterSummaries"" (""TikTokAccountId"", ""SenderUsername"");");
+    } catch { /* Index might already exist or PG version varies */ }
 }
 
 // Configure the HTTP request pipeline.
