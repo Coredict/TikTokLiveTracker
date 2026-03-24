@@ -55,7 +55,7 @@ public class TikTokTrackerService : BackgroundService
         try
         {
             await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
-            var accounts = await db.Accounts.ToListAsync(stoppingToken);
+            var accounts = await db.Accounts.OrderBy(a => a.Username).ToListAsync(stoppingToken);
             var recentGifts = await db.Gifts.Include(g => g.Account).OrderByDescending(g => g.Timestamp).Take(50).ToListAsync(stoppingToken);
             var topGifters = await db.GifterSummaries.Include(g => g.Account).OrderByDescending(g => g.TotalDiamonds).Take(50).ToListAsync(stoppingToken);
             
@@ -122,7 +122,7 @@ public class TikTokTrackerService : BackgroundService
     private async Task PollAllAccountsAsync(CancellationToken cancellationToken)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-        var accounts = await db.Accounts.ToListAsync(cancellationToken);
+        var accounts = await db.Accounts.OrderBy(a => a.Username).ToListAsync(cancellationToken);
         
         // Fetch active recordings from the microservice
         var activeRecordings = await _recorderClient.GetActiveRecordingsAsync();
@@ -202,6 +202,53 @@ public class TikTokTrackerService : BackgroundService
             }
             _logger.LogInformation("Updated AutoRecord for Account {Id} to {Status}", accountId, autoRecord);
         }
+    }
+
+    public async Task<(bool Success, string Message)> AddAccountAsync(string username)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        if (await db.Accounts.AnyAsync(a => a.Username == username))
+        {
+            return (false, $"@{username} is already being tracked.");
+        }
+
+        var account = new TikTokAccount { Username = username };
+        db.Accounts.Add(account);
+        await db.SaveChangesAsync();
+
+        // Immediately update the cache
+        lock (_cacheLock)
+        {
+            _cachedAccounts.Add(account);
+        }
+
+        _logger.LogInformation("Added new account: @{Username}", username);
+        return (true, $"@{username} added!");
+    }
+
+    public async Task<bool> RemoveAccountAsync(int accountId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.FindAsync(accountId);
+        if (account != null)
+        {
+            db.Accounts.Remove(account);
+            await db.SaveChangesAsync();
+
+            // Immediately update the cache
+            lock (_cacheLock)
+            {
+                var cached = _cachedAccounts.FirstOrDefault(a => a.Id == accountId);
+                if (cached != null)
+                {
+                    _cachedAccounts.Remove(cached);
+                }
+            }
+
+            _logger.LogInformation("Removed account ID: {Id}", accountId);
+            return true;
+        }
+        return false;
     }
 
     private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)

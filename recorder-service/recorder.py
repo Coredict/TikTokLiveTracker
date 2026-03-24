@@ -159,6 +159,6 @@ class TikTokRecorder:
             logger.info(f"Process for {username} finished independently.")
             del self.active_recordings[username]
 
-        return list(self.active_recordings.keys())
+        return sorted(list(self.active_recordings.keys()))
 
 recorder = TikTokRecorder()

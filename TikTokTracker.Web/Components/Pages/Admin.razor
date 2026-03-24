@@ -297,15 +297,12 @@ else
 
     private async Task OnRemoveAccount(MouseEventArgs args, TikTokAccount account)
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.Accounts.FindAsync(account.Id);
-        if (existing != null)
+        var success = await TrackerService.RemoveAccountAsync(account.Id);
+        if (success)
         {
-            db.Accounts.Remove(existing);
-            await db.SaveChangesAsync();
             await LoadAccounts();
+            statusMessage = $"@{account.Username} removed.";
         }
-        statusMessage = $"@{account.Username} removed.";
     }
 
     private async Task AddAccount(MouseEventArgs args)
@@ -313,19 +310,15 @@ else
         if (!string.IsNullOrWhiteSpace(newUsername))
         {
             var username = newUsername.Trim().Replace("@", "");
-            await using var db = await DbFactory.CreateDbContextAsync();
-            if (!await db.Accounts.AnyAsync(a => a.Username == username))
+            var (success, message) = await TrackerService.AddAccountAsync(username);
+            
+            if (success)
             {
-                db.Accounts.Add(new TikTokAccount { Username = username });
-                await db.SaveChangesAsync();
                 newUsername = "";
-                statusMessage = $"@{username} added!";
                 await LoadAccounts();
             }
-            else
-            {
-                statusMessage = $"@{username} is already being tracked.";
-            }
+            
+            statusMessage = message;
         }
     }
 
