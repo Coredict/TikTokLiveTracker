@@ -156,7 +156,7 @@
         <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Recorded Files</RadzenText>
         <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshFiles" IsBusy="@_isRefreshing" Tooltip="Refresh files" />
     </RadzenStack>
-    <RadzenDataGrid Data="@_files" TItem="string" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
+    <RadzenDataGrid Data="@_files" TItem="VideoFileInfo" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
         <EmptyTemplate>
             <div class="rz-p-12 rz-text-align-center">
                 <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-secondary-color);" />
@@ -164,22 +164,27 @@
             </div>
         </EmptyTemplate>
         <Columns>
-            <RadzenDataGridColumn TItem="string" Title="Filename">
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Filename">
                 <Template Context="file">
-                    <strong>@file</strong>
+                    <strong>@file.Name</strong>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="string" Title="Format" Width="100px" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Size" Width="100px">
                 <Template Context="file">
-                    <RadzenBadge Text="MP4" BadgeStyle="BadgeStyle.Info" IsPill="true" />
+                    <RadzenBadge Text="@FormatSize(file.SizeBytes)" BadgeStyle="BadgeStyle.Light" IsPill="true" />
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="string" Title="Actions" Width="220px" TextAlign="TextAlign.Right">
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Duration" Width="100px">
+                <Template Context="file">
+                    <RadzenBadge Text="@FormatDuration(file.DurationSeconds)" BadgeStyle="BadgeStyle.Info" IsPill="true" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Actions" Width="220px" TextAlign="TextAlign.Right">
                 <Template Context="file">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
                         <RadzenButton Icon="download" Text="Download" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" 
-                                      Click="@(args => JSRuntime.InvokeVoidAsync("open", RecorderClient.GetDownloadUrl(file), "_blank"))" />
-                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(args => DeleteFile(file))" />
+                                      Click="@(args => JSRuntime.InvokeVoidAsync("open", RecorderClient.GetDownloadUrl(file.Name), "_blank"))" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(args => DeleteFile(file.Name))" />
                     </RadzenStack>
                 </Template>
             </RadzenDataGridColumn>
@@ -201,7 +206,7 @@ else
     private string newUsername = "";
     private string statusMessage = "";
     private System.Threading.Timer? _timer;
-    private List<string> _files = new();
+    private List<VideoFileInfo> _files = new();
     private List<string> _activeUsernames = new();
     private int _refreshTick = 0;
     private bool _disposed = false;
@@ -363,6 +368,28 @@ else
     {
         AdminSession.Logout();
         NavManager.NavigateTo("/");
+    }
+
+    private string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int unitIndex = 0;
+        double size = bytes;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+        return $"{size:F1} {units[unitIndex]}";
+    }
+
+    private string FormatDuration(double? seconds)
+    {
+        if (!seconds.HasValue) return "??:??";
+        var ts = TimeSpan.FromSeconds(seconds.Value);
+        if (ts.TotalHours >= 1)
+            return ts.ToString(@"hh\:mm\:ss");
+        return ts.ToString(@"mm\:ss");
     }
 
     public void Dispose()

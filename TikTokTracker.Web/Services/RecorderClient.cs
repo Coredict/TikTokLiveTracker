@@ -80,7 +80,7 @@ public class RecorderClient
         return new List<string>();
     }
 
-    public async Task<List<string>> ListRecordingsAsync()
+    public async Task<List<VideoFileInfo>> ListRecordingsAsync()
     {
         try
         {
@@ -90,14 +90,14 @@ public class RecorderClient
                 var body = await response.Content.ReadAsStringAsync();
                 var result = JsonSerializer.Deserialize<FilesResponse>(body, 
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return result?.Files ?? new List<string>();
+                return result?.Files ?? new List<VideoFileInfo>();
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error listing recording files");
         }
-        return new List<string>();
+        return new List<VideoFileInfo>();
     }
 
     public async Task<bool> DeleteRecordingAsync(string filename)
@@ -134,5 +134,7 @@ public class RecorderClient
     public string GetDownloadUrl(string filename) => $"/api/recordings/{filename}";
 
     private class ActiveRecordingsResponse { [JsonPropertyName("active_recordings")] public List<string> ActiveRecordings { get; set; } = new(); }
-    private class FilesResponse { public List<string> Files { get; set; } = new(); }
+    private class FilesResponse { public List<VideoFileInfo> Files { get; set; } = new(); }
 }
+
+public record VideoFileInfo(string Name, long SizeBytes, double? DurationSeconds);

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using TikTokTracker.Recorder.Models;
 using TikTokTracker.Recorder.Services;
+using CliWrap;
+using CliWrap.Buffered;
 
 namespace TikTokTracker.Recorder.Controllers;
 
@@ -78,21 +80,51 @@ public class RecordingController : ControllerBase
     // --- RECORDED FILES ---
 
     [HttpGet("recordings")]
-    public ActionResult<FilesResponse> GetRecordedFiles()
+    public async Task<ActionResult<FilesResponse>> GetRecordedFiles()
     {
         if (!Directory.Exists(_recordingsDir))
         {
-            return Ok(new FilesResponse(new List<string>()));
+            return Ok(new FilesResponse(new List<VideoFileInfo>()));
         }
         
-        var files = Directory.GetFiles(_recordingsDir, "*.mp4")
+        var fileNames = Directory.GetFiles(_recordingsDir, "*.mp4")
             .Select(Path.GetFileName)
             .Where(f => f != null)
             .Cast<string>()
             .OrderByDescending(f => f)
             .ToList();
+
+        var videoFiles = new List<VideoFileInfo>();
+        foreach (var fileName in fileNames)
+        {
+            var filePath = Path.Combine(_recordingsDir, fileName);
+            var fileInfo = new FileInfo(filePath);
+            var duration = await GetVideoDurationAsync(filePath);
+            videoFiles.Add(new VideoFileInfo(fileName, fileInfo.Length, duration));
+        }
             
-        return Ok(new FilesResponse(files));
+        return Ok(new FilesResponse(videoFiles));
+    }
+
+    private async Task<double?> GetVideoDurationAsync(string filepath)
+    {
+        try
+        {
+            var result = await Cli.Wrap("ffprobe")
+                .WithArguments(new[] { "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filepath })
+                .WithValidation(CommandResultValidation.None)
+                .ExecuteBufferedAsync();
+
+            if (result.ExitCode == 0 && double.TryParse(result.StandardOutput.Trim(), out var duration))
+            {
+                return duration;
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore error, return null
+        }
+        return null;
     }
 
     [HttpGet("recordings/{filename}")]
