@@ -7,19 +7,20 @@ public class RecorderClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RecorderClient> _logger;
-    private const string BaseUrl = "http://recorder:8000";
+    private readonly string _baseUrl;
 
-    public RecorderClient(HttpClient httpClient, ILogger<RecorderClient> logger)
+    public RecorderClient(HttpClient httpClient, ILogger<RecorderClient> logger, IConfiguration configuration)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _baseUrl = configuration["Recorder:BaseUrl"] ?? "http://recorder:8000";
     }
 
     public async Task StartRecordingAsync(string username)
     {
         try
         {
-            var response = await _httpClient.PostAsync($"{BaseUrl}/record/{username}", null);
+            var response = await _httpClient.PostAsync($"{_baseUrl}/record/{username}", null);
             
             if (response.IsSuccessStatusCode)
             {
@@ -42,7 +43,7 @@ public class RecorderClient
     {
         try
         {
-            var response = await _httpClient.DeleteAsync($"{BaseUrl}/record/{username}");
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/record/{username}");
             
             if (response.IsSuccessStatusCode)
             {
@@ -64,7 +65,7 @@ public class RecorderClient
     {
         try
         {
-            var response = await _httpClient.GetAsync($"{BaseUrl}/record");
+            var response = await _httpClient.GetAsync($"{_baseUrl}/record");
             if (response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync();
@@ -84,7 +85,7 @@ public class RecorderClient
     {
         try
         {
-            var response = await _httpClient.GetAsync($"{BaseUrl}/recordings");
+            var response = await _httpClient.GetAsync($"{_baseUrl}/recordings");
             if (response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync();
@@ -104,7 +105,7 @@ public class RecorderClient
     {
         try
         {
-            var response = await _httpClient.DeleteAsync($"{BaseUrl}/recordings/{filename}");
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/recordings/{filename}");
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -118,7 +119,7 @@ public class RecorderClient
     {
         try
         {
-            var response = await _httpClient.GetAsync($"{BaseUrl}/recordings/{filename}", HttpCompletionOption.ResponseHeadersRead);
+            var response = await _httpClient.GetAsync($"{_baseUrl}/recordings/{filename}", HttpCompletionOption.ResponseHeadersRead);
             if (response.IsSuccessStatusCode)
             {
                 return await response.Content.ReadAsStreamAsync();
