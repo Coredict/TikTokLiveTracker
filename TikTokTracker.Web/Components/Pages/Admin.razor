@@ -115,9 +115,12 @@
     <RadzenText TextStyle="TextStyle.H5" class="rz-mt-8 rz-mb-4">Recording Management</RadzenText>
     
     <RadzenCard class="rz-mb-6" Style="border-left: 4px solid var(--rz-danger);">
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" class="rz-mb-4">
-            <RadzenIcon Icon="fiber_manual_record" Style="color: var(--rz-danger); font-size: 1.5rem;" />
-            <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Ongoing Recordings</RadzenText>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="rz-mb-4">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenIcon Icon="fiber_manual_record" Style="color: var(--rz-danger); font-size: 1.5rem;" />
+                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Ongoing Recordings</RadzenText>
+            </RadzenStack>
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshAllRecordings" IsBusy="@_isRefreshing" Tooltip="Refresh recordings" />
         </RadzenStack>
 
         <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" AllowPaging="true" PageSize="5" Responsive="true" class="rz-border-radius-1">
@@ -149,7 +152,10 @@
         </RadzenDataGrid>
     </RadzenCard>
 
-    <RadzenText TextStyle="TextStyle.H6" class="rz-mb-2">Recorded Files</RadzenText>
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="rz-mb-2">
+        <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Recorded Files</RadzenText>
+        <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshFiles" IsBusy="@_isRefreshing" Tooltip="Refresh files" />
+    </RadzenStack>
     <RadzenDataGrid Data="@_files" TItem="string" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
         <EmptyTemplate>
             <div class="rz-p-12 rz-text-align-center">
@@ -199,6 +205,7 @@ else
     private List<string> _activeUsernames = new();
     private int _refreshTick = 0;
     private bool _disposed = false;
+    private bool _isRefreshing = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -259,13 +266,31 @@ else
 
     private async Task RefreshAllRecordings()
     {
-        _activeUsernames = await RecorderClient.GetActiveRecordingsAsync();
-        _files = await RecorderClient.ListRecordingsAsync();
+        if (_isRefreshing) return;
+        try
+        {
+            _isRefreshing = true;
+            _activeUsernames = await RecorderClient.GetActiveRecordingsAsync();
+            _files = await RecorderClient.ListRecordingsAsync();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
     }
 
     private async Task RefreshFiles()
     {
-        _files = await RecorderClient.ListRecordingsAsync();
+        if (_isRefreshing) return;
+        try
+        {
+            _isRefreshing = true;
+            _files = await RecorderClient.ListRecordingsAsync();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
     }
 
     private async Task DeleteFile(string filename)
@@ -291,6 +316,18 @@ else
         
         // 2. Call centralized service to update DB and shared cache atomically
         await TrackerService.UpdateAccountAutoRecordAsync(account.Id, isChecked);
+        
+        // 3. If turning on and already live, start recording immediately
+        if (isChecked && account.IsOnline)
+        {
+            statusMessage = $"Starting recording for @{account.Username}...";
+            await RecorderClient.StartRecordingAsync(account.Username);
+            
+            // Wait briefly for recorder to initialize process, then refresh lists
+            await Task.Delay(1000);
+            await RefreshAllRecordings();
+            StateHasChanged();
+        }
         
         statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
     }
