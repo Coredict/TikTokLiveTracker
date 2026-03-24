@@ -12,9 +12,16 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 var recordingsDir = "recordings";
+var tempDir = "tmp";
+
 if (!Directory.Exists(recordingsDir))
 {
     Directory.CreateDirectory(recordingsDir);
+}
+
+if (!Directory.Exists(tempDir))
+{
+    Directory.CreateDirectory(tempDir);
 }
 
 app.MapControllers();

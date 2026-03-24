@@ -15,6 +15,7 @@ public class RecordingService : IRecordingService
     private readonly ILogger<RecordingService> _logger;
     private readonly ConcurrentDictionary<string, (CancellationTokenSource Cts, string Filename, string FilePath)> _activeRecordings = new();
     private readonly string _recordingsDir = "recordings";
+    private readonly string _tempDir = "tmp";
 
     public RecordingService(ILogger<RecordingService> logger)
     {
@@ -22,6 +23,10 @@ public class RecordingService : IRecordingService
         if (!Directory.Exists(_recordingsDir))
         {
             Directory.CreateDirectory(_recordingsDir);
+        }
+        if (!Directory.Exists(_tempDir))
+        {
+            Directory.CreateDirectory(_tempDir);
         }
     }
 
@@ -35,9 +40,9 @@ public class RecordingService : IRecordingService
 
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var filename = $"{username}_{timestamp}.mp4";
-        var filepath = Path.Combine(_recordingsDir, filename);
+        var filepath = Path.Combine(_tempDir, filename);
 
-        _logger.LogInformation("Starting ffmpeg for {Username} -> {Filename}", username, filename);
+        _logger.LogInformation("Starting ffmpeg for {Username} -> {Filename} (in {TempDir})", username, filename, _tempDir);
 
         try
         {
@@ -52,24 +57,33 @@ public class RecordingService : IRecordingService
                         .WithValidation(CommandResultValidation.None)
                         .ExecuteAsync(cts.Token);
                     
-                    if (_activeRecordings.TryRemove(username, out _))
-                    {
-                        _logger.LogInformation("Recording for {Username} finished: {ExitCode}", username, result.ExitCode);
-                    }
+                    _logger.LogInformation("ffmpeg process for {Username} finished with code {ExitCode}", username, result.ExitCode);
                 }
                 catch (OperationCanceledException)
                 {
                     _logger.LogInformation("Recording for {Username} cancelled.", username);
-                    if (_activeRecordings.TryRemove(username, out _))
-                    {
-                        // Clean up
-                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "ffmpeg process for {Username} failed", username);
-                    if (_activeRecordings.TryRemove(username, out _))
+                }
+                finally
+                {
+                    if (_activeRecordings.TryRemove(username, out var info))
                     {
+                        var finalPath = Path.Combine(_recordingsDir, info.Filename);
+                        try
+                        {
+                            if (File.Exists(info.FilePath))
+                            {
+                                File.Move(info.FilePath, finalPath, true);
+                                _logger.LogInformation("Moved completed recording for {Username} to {FinalPath}", username, finalPath);
+                            }
+                        }
+                        catch (Exception moveEx)
+                        {
+                            _logger.LogError(moveEx, "Failed to move recording file from {TempPath} to {FinalPath}", info.FilePath, finalPath);
+                        }
                     }
                 }
             });
