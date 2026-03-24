@@ -53,7 +53,7 @@ public class RecordingService : IRecordingService
                 try
                 {
                     var result = await Cli.Wrap("ffmpeg")
-                        .WithArguments(new[] { "-i", streamUrl, "-c", "copy", "-f", "mp4", "-y", filepath })
+                        .WithArguments(new[] { "-i", streamUrl, "-c", "copy", "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-y", filepath })
                         .WithValidation(CommandResultValidation.None)
                         .ExecuteAsync(cts.Token);
                     
