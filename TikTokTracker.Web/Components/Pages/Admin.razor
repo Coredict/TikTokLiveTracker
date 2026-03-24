@@ -213,7 +213,8 @@ else
     {
         if (firstRender && AdminSession.IsAdmin && !_disposed)
         {
-            _timer = new System.Threading.Timer(OnTimerCallback, null, 1000, 1000);
+            // Reduced frequency from 1s to 3s to improve stability and reduce race conditions
+            _timer = new System.Threading.Timer(OnTimerCallback, null, 3000, 3000);
         }
         await Task.CompletedTask;
     }
@@ -285,19 +286,13 @@ else
 
     private async Task OnToggleAccount(bool isChecked, TikTokAccount account)
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.Accounts.FindAsync(account.Id);
-        if (existing != null)
-        {
-            existing.AutoRecord = isChecked;
-            await db.SaveChangesAsync();
-            
-            // Critical: Also update the cached version so the live tracker picks it up immediately
-            var cached = TrackerService.CachedAccounts.FirstOrDefault(a => a.Id == account.Id);
-            if (cached != null) cached.AutoRecord = isChecked;
-            
-            statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
-        }
+        // 1. Update local UI state immediately for responsiveness
+        account.AutoRecord = isChecked;
+        
+        // 2. Call centralized service to update DB and shared cache atomically
+        await TrackerService.UpdateAccountAutoRecordAsync(account.Id, isChecked);
+        
+        statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
     }
 
     private async Task OnRemoveAccount(MouseEventArgs args, TikTokAccount account)

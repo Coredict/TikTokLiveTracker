@@ -175,11 +175,32 @@ public class TikTokTrackerService : BackgroundService
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // Update cache
         lock (_cacheLock)
         {
             _cachedAccounts.Clear();
             _cachedAccounts.AddRange(accounts);
+        }
+    }
+
+    public async Task UpdateAccountAutoRecordAsync(int accountId, bool autoRecord)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.FindAsync(accountId);
+        if (account != null)
+        {
+            account.AutoRecord = autoRecord;
+            await db.SaveChangesAsync();
+            
+            // Immediately update the cache to prevent race conditions with UI refresh
+            lock (_cacheLock)
+            {
+                var cached = _cachedAccounts.FirstOrDefault(a => a.Id == accountId);
+                if (cached != null)
+                {
+                    cached.AutoRecord = autoRecord;
+                }
+            }
+            _logger.LogInformation("Updated AutoRecord for Account {Id} to {Status}", accountId, autoRecord);
         }
     }
 
