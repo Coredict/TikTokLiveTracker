@@ -1,0 +1,48 @@
+services:
+  db-test:
+    image: postgres:16-alpine
+    container_name: tiktoktracker-db-test
+    restart: always
+    environment:
+      POSTGRES_DB: tiktoktracker_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+
+  app-test:
+    build:
+      context: .
+      dockerfile: TikTokTracker.Web/Dockerfile
+    container_name: tiktoktracker-app-test
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db-test;Port=5432;Database=tiktoktracker_test;Username=postgres;Password=postgres
+      - Recorder__BaseUrl=http://recorder-test:8000
+    ports:
+      - "5001:8080"
+    depends_on:
+      - db-test
+    volumes:
+      - app-keys-test:/app/keys
+
+  recorder-test:
+    build:
+      context: ./recorder-service
+      dockerfile: Dockerfile
+    container_name: tiktoktracker-recorder-test
+    restart: always
+    environment:
+      - TIKTOK_SESSION_ID=e4fcc9a348f1427818b6cabe40aef5a9
+    ports:
+      - "8001:8000"
+    volumes:
+      - tiktok-recordings-test:/app/recordings
+
+volumes:
+  pgdata-test:
+  app-keys-test:
+  tiktok-recordings-test:

@@ -11,6 +11,9 @@ public class GiftTransaction
     public TikTokAccount? Account { get; set; }
 
     [Required]
+    public string SenderUserId { get; set; } = string.Empty;
+
+    [Required]
     public string SenderUsername { get; set; } = string.Empty;
     
     [Required]
@@ -23,6 +26,8 @@ public class GiftTransaction
     public int DiamondCost { get; set; }
     
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    
+    public string? StreakId { get; set; }
 
     public int TotalDiamonds => Amount * DiamondCost;
 }

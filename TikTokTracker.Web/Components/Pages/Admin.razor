@@ -4,163 +4,397 @@
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
 @using TikTokTracker.Web.Services
+@using Radzen
+@using Radzen.Blazor
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject TikTokTrackerService TrackerService
 @inject AdminSessionService AdminSession
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
+@inject RecorderClient RecorderClient
 @implements IDisposable
 
 <PageTitle>Admin Panel</PageTitle>
 
-@if (!AdminSession.IsAdmin)
+<style>
+    .rz-flex-wrap {
+        flex-wrap: wrap !important;
+    }
+
+    @@media (max-width: 768px) {
+        .mobile-hide {
+            display: none !important;
+        }
+        .rz-w-xs-100 {
+            width: 100% !important;
+            display: block !important;
+            margin-top: 10px;
+        }
+        .header-stack {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+        }
+        .add-account-stack {
+            flex-direction: column !important;
+        }
+        .add-account-input {
+            width: 100% !important;
+            margin-bottom: 10px !important;
+        }
+    }
+</style>
+
+@if (AdminSession.IsAdmin)
 {
-    <div class="container mt-4">
-        <div class="alert alert-danger">
-            You must be logged in as admin to access this page. <a href="/login">Login here</a>.
-        </div>
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Wrap="FlexWrap.Wrap" class="rz-mb-4 rz-flex-wrap header-stack" Style="gap: 1rem;">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenIcon Icon="admin_panel_settings" Style="font-size: 2rem;" />
+            <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="Admin Panel" />
+        </RadzenStack>
+        <RadzenButton Text="Logout" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Variant="Variant.Outlined" Click="@Logout" class="rz-w-xs-100" />
+    </RadzenStack>
+
+    <RadzenCard class="rz-mb-4">
+        <RadzenText TextStyle="TextStyle.H6" Text="Add New Account" class="rz-mb-3" />
+        <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="1rem" class="rz-flex-wrap add-account-stack">
+            <input @bind="newUsername" placeholder="TikTok Username (without @@)" class="rz-textbox rz-flex-grow-1 rz-w-xs-100 add-account-input" />
+            <RadzenButton Text="Add" ButtonStyle="ButtonStyle.Success" Click="@AddAccount" class="rz-w-xs-100" />
+        </RadzenStack>
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="rz-mt-2 rz-p-2">
+                @statusMessage
+            </RadzenAlert>
+        }
+    </RadzenCard>
+
+    <RadzenDataGrid Data="@accounts" TItem="TikTokAccount" AllowPaging="true" PageSize="10" Density="Density.Default" Responsive="true" class="rz-border-radius-1">
+        <Columns>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Username">
+                <Template Context="account">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenIcon Icon="account_circle" />
+                        <strong>@("@" + account.Username)</strong>
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Status" Width="120px">
+                <Template Context="account">
+                    @if (account.IsOnline)
+                    {
+                        <RadzenBadge Text="Online" BadgeStyle="BadgeStyle.Success" IsPill="true" />
+                    }
+                    else
+                    {
+                        <RadzenBadge Text="Offline" BadgeStyle="BadgeStyle.Secondary" IsPill="true" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Auto-Record" Width="150px" TextAlign="TextAlign.Center" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+                <Template Context="account">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Center" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenSwitch TValue="bool" Value="@account.AutoRecord" Change="@(v => OnToggleAccount(v, account))" />
+                        <RadzenText Text="@(account.AutoRecord ? "ON" : "OFF")" TextStyle="TextStyle.Caption" class="rz-m-0" />
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Coins Today" Width="140px" TextAlign="TextAlign.Right" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+                <Template Context="account">
+                    <RadzenText TextStyle="TextStyle.Body1" class="rz-color-warning">💎 @account.CurrentCoins.ToString("N0")</RadzenText>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Actions" Width="80px" TextAlign="TextAlign.Center">
+                <Template Context="account">
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Text" Click="@(args => OnRemoveAccount(args, account))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+
+    <RadzenText TextStyle="TextStyle.H5" class="rz-mt-8 rz-mb-4">Recording Management</RadzenText>
+    
+    <RadzenCard class="rz-mb-6" Style="border-left: 4px solid var(--rz-danger);">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="rz-mb-4">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenIcon Icon="fiber_manual_record" Style="color: var(--rz-danger); font-size: 1.5rem;" />
+                <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Ongoing Recordings</RadzenText>
+            </RadzenStack>
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshAllRecordings" IsBusy="@_isRefreshing" Tooltip="Refresh recordings" />
+        </RadzenStack>
+
+        <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" AllowPaging="true" PageSize="5" Responsive="true" class="rz-border-radius-1">
+            <EmptyTemplate>
+                <div class="rz-p-4 rz-text-align-center">
+                    <RadzenText TextStyle="TextStyle.Body2" Text="No active recordings at the moment." />
+                </div>
+            </EmptyTemplate>
+            <Columns>
+                <RadzenDataGridColumn TItem="string" Title="Account">
+                    <Template Context="username">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Danger" IsPill="true" />
+                            <strong>@("@" + username)</strong>
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="string" Title="Status" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+                    <Template Context="username">
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Recording in progress..." />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="string" Title="Actions" Width="150px" TextAlign="TextAlign.Right">
+                    <Template Context="username">
+                        <RadzenButton Icon="stop_circle" Text="Stop" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@(args => StopRecording(username))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="rz-mb-2">
+        <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Recorded Files</RadzenText>
+        <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshFiles" IsBusy="@_isRefreshing" Tooltip="Refresh files" />
+    </RadzenStack>
+    <RadzenDataGrid Data="@_files" TItem="VideoFileInfo" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
+        <EmptyTemplate>
+            <div class="rz-p-12 rz-text-align-center">
+                <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-secondary-color);" />
+                <RadzenText TextStyle="TextStyle.Subtitle1" Text="No recording files found." />
+            </div>
+        </EmptyTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Filename">
+                <Template Context="file">
+                    <strong>@file.Name</strong>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Size" Width="100px">
+                <Template Context="file">
+                    <RadzenBadge Text="@FormatSize(file.SizeBytes)" BadgeStyle="BadgeStyle.Light" IsPill="true" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Duration" Width="100px">
+                <Template Context="file">
+                    <RadzenBadge Text="@FormatDuration(file.DurationSeconds)" BadgeStyle="BadgeStyle.Info" IsPill="true" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="VideoFileInfo" Title="Actions" Width="220px" TextAlign="TextAlign.Right">
+                <Template Context="file">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+                        <RadzenButton Icon="download" Text="Download" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" 
+                                      Click="@(args => JSRuntime.InvokeVoidAsync("open", RecorderClient.GetDownloadUrl(file.Name), "_blank"))" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(args => DeleteFile(file.Name))" />
+                    </RadzenStack>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
+else
+{
+    <div class="rz-p-12 rz-text-align-center">
+        <RadzenIcon Icon="lock" Style="font-size: 4rem; color: var(--rz-danger);" />
+        <RadzenText TextStyle="TextStyle.H5" Text="Access Denied" class="rz-mt-4" />
+        <RadzenText TextStyle="TextStyle.Body1" Text="You must be logged in as admin to access this page." />
+        <RadzenButton Text="Login here" ButtonStyle="ButtonStyle.Primary" class="rz-mt-4" Click="@(() => NavManager.NavigateTo("/login"))" />
     </div>
-    return;
 }
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Admin Panel - Tracked Accounts</h2>
-        <button class="btn btn-outline-secondary btn-sm" @onclick="Logout">Logout</button>
-    </div>
-
-    <div class="card mb-4 shadow-sm">
-        <div class="card-body">
-            <h5 class="card-title">Add New Account</h5>
-            <div class="input-group">
-                <input type="text" class="form-control" @bind="newUsername" placeholder="TikTok Username (without @@)" />
-                <button class="btn btn-success" @onclick="AddAccount">Add Account</button>
-            </div>
-            @if (!string.IsNullOrEmpty(statusMessage))
-            {
-                <div class="mt-2 alert alert-info py-1">@statusMessage</div>
-            }
-        </div>
-    </div>
-
-    <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle">
-            <thead class="table-dark">
-                <tr>
-                    <th>Username</th>
-                    <th>Status</th>
-                    <th>Coins</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (accounts == null)
-                {
-                    <tr><td colspan="4" class="text-center">Loading...</td></tr>
-                }
-                else if (!accounts.Any())
-                {
-                    <tr><td colspan="4" class="text-center">No accounts tracked yet.</td></tr>
-                }
-                else
-                {
-                    @foreach (var account in accounts)
-                    {
-                        <tr>
-                            <td><strong>@account.Username</strong></td>
-                            <td>
-                                @if (account.IsOnline)
-                                {
-                                    <span class="badge bg-success">Online</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">Offline</span>
-                                }
-                            </td>
-                            <td>@account.CurrentCoins.ToString("N0")</td>
-                            <td>
-                                <button class="btn btn-danger btn-sm" @onclick="() => RemoveAccount(account)">
-                                    <i class="bi bi-trash"></i> Remove
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
 @code {
-    private List<TikTokAccount>? accounts;
+    private List<TikTokAccount> accounts = new();
     private string newUsername = "";
     private string statusMessage = "";
     private System.Threading.Timer? _timer;
+    private List<VideoFileInfo> _files = new();
+    private List<string> _activeUsernames = new();
+    private int _refreshTick = 0;
+    private bool _disposed = false;
+    private bool _isRefreshing = false;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAccounts();
-
-        _timer = new System.Threading.Timer(async _ =>
+        if (AdminSession.IsAdmin)
         {
-            await InvokeAsync(async () =>
-            {
-                await LoadAccounts();
-                StateHasChanged();
-            });
-        }, null, 1000, 1000);
+            await LoadAccounts();
+            await RefreshAllRecordings();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AdminSession.IsAdmin && !_disposed)
+        {
+            // Reduced frequency from 1s to 3s to improve stability and reduce race conditions
+            _timer = new System.Threading.Timer(OnTimerCallback, null, 3000, 3000);
+        }
+        await Task.CompletedTask;
     }
 
     private async Task LoadAccounts()
     {
-        // Use in-memory cache for status display
+        if (_disposed) return;
         accounts = TrackerService.CachedAccounts.ToList();
         await Task.CompletedTask;
     }
 
-    private async Task AddAccount()
+    private void OnTimerCallback(object? state)
+    {
+        if (_disposed) return;
+
+        InvokeAsync(async () =>
+        {
+            try 
+            {
+                if (_disposed) return;
+
+                await LoadAccounts();
+                
+                _refreshTick++;
+                if (_refreshTick >= 5)
+                {
+                    await RefreshAllRecordings();
+                    _refreshTick = 0;
+                }
+                
+                if (!_disposed)
+                {
+                    StateHasChanged();
+                }
+            }
+            catch (Exception)
+            {
+                // Silent catch for secondary render errors during disposal
+            }
+        });
+    }
+
+    private async Task RefreshAllRecordings()
+    {
+        if (_isRefreshing) return;
+        try
+        {
+            _isRefreshing = true;
+            _activeUsernames = await RecorderClient.GetActiveRecordingsAsync();
+            _files = await RecorderClient.ListRecordingsAsync();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    private async Task RefreshFiles()
+    {
+        if (_isRefreshing) return;
+        try
+        {
+            _isRefreshing = true;
+            _files = await RecorderClient.ListRecordingsAsync();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    private async Task DeleteFile(string filename)
+    {
+        var success = await RecorderClient.DeleteRecordingAsync(filename);
+        if (success)
+        {
+            await RefreshFiles();
+        }
+    }
+
+    private async Task StopRecording(string username)
+    {
+        await RecorderClient.StopRecordingAsync(username);
+        await Task.Delay(500); 
+        await RefreshAllRecordings();
+    }
+
+    private async Task OnToggleAccount(bool isChecked, TikTokAccount account)
+    {
+        // 1. Update local UI state immediately for responsiveness
+        account.AutoRecord = isChecked;
+        
+        // 2. Call centralized service to update DB and shared cache atomically
+        await TrackerService.UpdateAccountAutoRecordAsync(account.Id, isChecked);
+        
+        // 3. If turning on and already live, start recording immediately
+        if (isChecked && account.IsOnline)
+        {
+            statusMessage = $"Starting recording for @{account.Username}...";
+            await RecorderClient.StartRecordingAsync(account.Username);
+            
+            // Wait briefly for recorder to initialize process, then refresh lists
+            await Task.Delay(1000);
+            await RefreshAllRecordings();
+            StateHasChanged();
+        }
+        
+        statusMessage = $"Auto-record for @{account.Username} {(isChecked ? "enabled" : "disabled")}.";
+    }
+
+    private async Task OnRemoveAccount(MouseEventArgs args, TikTokAccount account)
+    {
+        var success = await TrackerService.RemoveAccountAsync(account.Id);
+        if (success)
+        {
+            await LoadAccounts();
+            statusMessage = $"@{account.Username} removed.";
+        }
+    }
+
+    private async Task AddAccount(MouseEventArgs args)
     {
         if (!string.IsNullOrWhiteSpace(newUsername))
         {
             var username = newUsername.Trim().Replace("@", "");
-            await using var db = await DbFactory.CreateDbContextAsync();
-            if (!await db.Accounts.AnyAsync(a => a.Username == username))
+            var (success, message) = await TrackerService.AddAccountAsync(username);
+            
+            if (success)
             {
-                db.Accounts.Add(new TikTokAccount { Username = username });
-                await db.SaveChangesAsync();
                 newUsername = "";
-                statusMessage = $"@{username} added!";
                 await LoadAccounts();
             }
-            else
-            {
-                statusMessage = $"@{username} is already being tracked.";
-            }
+            
+            statusMessage = message;
         }
     }
 
-    private async Task RemoveAccount(TikTokAccount account)
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.Accounts.FindAsync(account.Id);
-        if (existing != null)
-        {
-            db.Accounts.Remove(existing);
-            await db.SaveChangesAsync();
-        }
-        statusMessage = $"@{account.Username} removed.";
-        await LoadAccounts();
-    }
-
-    private void Logout()
+    private void Logout(MouseEventArgs args)
     {
         AdminSession.Logout();
         NavManager.NavigateTo("/");
     }
 
+    private string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int unitIndex = 0;
+        double size = bytes;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+        return $"{size:F1} {units[unitIndex]}";
+    }
+
+    private string FormatDuration(double? seconds)
+    {
+        if (!seconds.HasValue) return "??:??";
+        var ts = TimeSpan.FromSeconds(seconds.Value);
+        if (ts.TotalHours >= 1)
+            return ts.ToString(@"hh\:mm\:ss");
+        return ts.ToString(@"mm\:ss");
+    }
+
     public void Dispose()
     {
+        _disposed = true;
         _timer?.Dispose();
     }
 }

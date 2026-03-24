@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 using TikTokLiveSharp.Client;
@@ -12,11 +13,13 @@ public class TikTokTrackerService : BackgroundService
     private readonly ILogger<TikTokTrackerService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly RecorderClient _recorderClient;
     
     // Cache for UI
     private readonly List<TikTokAccount> _cachedAccounts = new();
     private readonly List<GiftTransaction> _cachedRecentGifts = new();
     private readonly List<GifterSummary> _cachedTopGifters = new();
+    private readonly Dictionary<string, (string Username, string Nickname)> _userIdCache = new();
     private readonly object _cacheLock = new();
 
     // Tracks active WebSocket gift listeners
@@ -36,12 +39,14 @@ public class TikTokTrackerService : BackgroundService
         IServiceProvider serviceProvider,
         ILogger<TikTokTrackerService> logger,
         IHttpClientFactory httpClientFactory,
-        IDbContextFactory<AppDbContext> dbFactory)
+        IDbContextFactory<AppDbContext> dbFactory,
+        RecorderClient recorderClient)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient("TikTok");
         _dbFactory = dbFactory;
+        _recorderClient = recorderClient;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,19 +55,29 @@ public class TikTokTrackerService : BackgroundService
         try
         {
             await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
-            var accounts = await db.Accounts.ToListAsync(stoppingToken);
+            var accounts = await db.Accounts.OrderBy(a => a.Username).ToListAsync(stoppingToken);
             var recentGifts = await db.Gifts.Include(g => g.Account).OrderByDescending(g => g.Timestamp).Take(50).ToListAsync(stoppingToken);
             var topGifters = await db.GifterSummaries.Include(g => g.Account).OrderByDescending(g => g.TotalDiamonds).Take(50).ToListAsync(stoppingToken);
             
-            lock (_cacheLock)
-            {
-                _cachedAccounts.Clear();
-                _cachedAccounts.AddRange(accounts);
-                _cachedRecentGifts.Clear();
-                _cachedRecentGifts.AddRange(recentGifts);
-                _cachedTopGifters.Clear();
-                _cachedTopGifters.AddRange(topGifters);
-            }
+                lock (_cacheLock)
+                {
+                    _cachedAccounts.Clear();
+                    _cachedAccounts.AddRange(accounts);
+                    _cachedRecentGifts.Clear();
+                    _cachedRecentGifts.AddRange(recentGifts);
+                    _cachedTopGifters.Clear();
+                    _cachedTopGifters.AddRange(topGifters);
+
+                    // Populate user ID cache from top gifters
+                    _userIdCache.Clear();
+                    foreach (var g in topGifters)
+                    {
+                        if (g.SenderUsername != "unknown")
+                        {
+                            _userIdCache[g.SenderUserId] = (g.SenderUsername, g.SenderNickname);
+                        }
+                    }
+                }
             _logger.LogInformation("Initial cache populated: {Acc} accounts, {Gifts} gifts, {Gifters} gifters.", accounts.Count, recentGifts.Count, topGifters.Count);
         }
         catch (Exception ex)
@@ -107,7 +122,10 @@ public class TikTokTrackerService : BackgroundService
     private async Task PollAllAccountsAsync(CancellationToken cancellationToken)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-        var accounts = await db.Accounts.ToListAsync(cancellationToken);
+        var accounts = await db.Accounts.OrderBy(a => a.Username).ToListAsync(cancellationToken);
+        
+        // Fetch active recordings from the microservice
+        var activeRecordings = await _recorderClient.GetActiveRecordingsAsync();
         
         // Only cleanup once per hour to reduce SQL noise
         if (DateTime.UtcNow - _lastCleanupTime > TimeSpan.FromHours(1))
@@ -143,16 +161,94 @@ public class TikTokTrackerService : BackgroundService
                 account.IsOnline = isLive;
                 account.ViewerCount = isLive ? viewerCount : 0;
             }
+
+            // Set recording status (not persisted to DB)
+            account.IsRecording = activeRecordings.Contains(account.Username, StringComparer.OrdinalIgnoreCase);
+
+            // New: Trigger recording if AutoRecord is enabled and account is live
+            if (account.AutoRecord && isLive && !account.IsRecording)
+            {
+                // Fire and forget recording trigger
+                _ = _recorderClient.StartRecordingAsync(account.Username);
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // Update cache
         lock (_cacheLock)
         {
             _cachedAccounts.Clear();
             _cachedAccounts.AddRange(accounts);
         }
+    }
+
+    public async Task UpdateAccountAutoRecordAsync(int accountId, bool autoRecord)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.FindAsync(accountId);
+        if (account != null)
+        {
+            account.AutoRecord = autoRecord;
+            await db.SaveChangesAsync();
+            
+            // Immediately update the cache to prevent race conditions with UI refresh
+            lock (_cacheLock)
+            {
+                var cached = _cachedAccounts.FirstOrDefault(a => a.Id == accountId);
+                if (cached != null)
+                {
+                    cached.AutoRecord = autoRecord;
+                }
+            }
+            _logger.LogInformation("Updated AutoRecord for Account {Id} to {Status}", accountId, autoRecord);
+        }
+    }
+
+    public async Task<(bool Success, string Message)> AddAccountAsync(string username)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        if (await db.Accounts.AnyAsync(a => a.Username == username))
+        {
+            return (false, $"@{username} is already being tracked.");
+        }
+
+        var account = new TikTokAccount { Username = username };
+        db.Accounts.Add(account);
+        await db.SaveChangesAsync();
+
+        // Immediately update the cache
+        lock (_cacheLock)
+        {
+            _cachedAccounts.Add(account);
+        }
+
+        _logger.LogInformation("Added new account: @{Username}", username);
+        return (true, $"@{username} added!");
+    }
+
+    public async Task<bool> RemoveAccountAsync(int accountId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.FindAsync(accountId);
+        if (account != null)
+        {
+            db.Accounts.Remove(account);
+            await db.SaveChangesAsync();
+
+            // Immediately update the cache
+            lock (_cacheLock)
+            {
+                var cached = _cachedAccounts.FirstOrDefault(a => a.Id == accountId);
+                if (cached != null)
+                {
+                    _cachedAccounts.Remove(cached);
+                }
+            }
+
+            _logger.LogInformation("Removed account ID: {Id}", accountId);
+            return true;
+        }
+        return false;
     }
 
     private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
@@ -253,14 +349,20 @@ public class TikTokTrackerService : BackgroundService
             {
                 var diamondCost = e.Gift.DiamondCost > 0 ? e.Gift.DiamondCost : 1;
                 var currentAmount = e.Amount > 0 ? (int)e.Amount : 1;
+                var streakId = Guid.NewGuid().ToString();
                 
-                RecordGift(accountId, (int)currentAmount, e.Gift.Name, diamondCost, e.Sender.UniqueId, e.Sender.NickName);
+                // Record initial gift for both UI and DB
+                var uiTransaction = RecordGift(accountId, (int)currentAmount, e.Gift.Name, diamondCost, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName, streakId, true);
 
                 e.OnAmountChanged += (gift, change, newAmount) =>
                 {
                     if (change > 0)
                     {
-                        RecordGift(accountId, (int)change, e.Gift.Name, diamondCost, e.Sender.UniqueId, e.Sender.NickName);
+                        // Update UI transaction (fix name if resolved, update amount)
+                        UpdateUiGift(uiTransaction, (int)newAmount, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName);
+                        
+                        // Record delta for DB accounting (silent, don't add to UI feed)
+                        RecordGift(accountId, (int)change, e.Gift.Name, diamondCost, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName, streakId, false);
                     }
                 };
             }
@@ -284,26 +386,52 @@ public class TikTokTrackerService : BackgroundService
         _logger.LogInformation("Started gift tracking WebSocket for @{Username}", username);
     }
 
-    private void RecordGift(int accountId, int amount, string giftName, int diamondCost, string senderUniqueId, string senderNickname)
+    private GiftTransaction RecordGift(int accountId, int amount, string giftName, int diamondCost, string senderUserId, string senderUniqueId, string senderNickname, string? streakId, bool addToCache)
     {
         var transaction = new GiftTransaction
         {
             TikTokAccountId = accountId,
+            SenderUserId = senderUserId,
             SenderUsername = senderUniqueId,
             SenderNickname = senderNickname,
             GiftName = giftName,
             Amount = amount,
             DiamondCost = diamondCost,
-            Timestamp = DateTime.UtcNow
+            Timestamp = DateTime.UtcNow,
+            StreakId = streakId
         };
+
+        // Attempt robust mapping if name is unknown
+        if (transaction.SenderUsername == "unknown")
+        {
+            lock (_cacheLock)
+            {
+                if (_userIdCache.TryGetValue(senderUserId, out var cached))
+                {
+                    transaction.SenderUsername = cached.Username;
+                    transaction.SenderNickname = cached.Nickname;
+                }
+            }
+        }
+        else
+        {
+            // Update cache with known good names
+            lock (_cacheLock)
+            {
+                _userIdCache[senderUserId] = (senderUniqueId, senderNickname);
+            }
+        }
 
         _giftBuffer.Enqueue(transaction);
 
-        // Update recent gifts cache immediately
-        lock (_cacheLock)
+        if (addToCache)
         {
-            _cachedRecentGifts.Insert(0, transaction);
-            if (_cachedRecentGifts.Count > 50) _cachedRecentGifts.RemoveAt(50);
+            // Update recent gifts cache immediately
+            lock (_cacheLock)
+            {
+                _cachedRecentGifts.Insert(0, transaction);
+                if (_cachedRecentGifts.Count > 50) _cachedRecentGifts.RemoveAt(50);
+            }
         }
 
         if (_giftBuffer.Count >= MaxBufferSize)
@@ -312,6 +440,27 @@ public class TikTokTrackerService : BackgroundService
                 await using var db = await _dbFactory.CreateDbContextAsync();
                 await FlushGiftsAsync(db, CancellationToken.None);
             });
+        }
+        
+        return transaction;
+    }
+
+    private void UpdateUiGift(GiftTransaction uiTransaction, int newAmount, string senderUserId, string currentUsername, string currentNickname)
+    {
+        lock (_cacheLock)
+        {
+            uiTransaction.Amount = newAmount;
+            
+            // If the name is now known, update it
+            if ((uiTransaction.SenderUsername == "unknown" || string.IsNullOrEmpty(uiTransaction.SenderUsername)) && 
+                !string.IsNullOrEmpty(currentUsername) && currentUsername != "unknown")
+            {
+                uiTransaction.SenderUsername = currentUsername;
+                uiTransaction.SenderNickname = currentNickname;
+                
+                // Also update the ID cache for future use
+                _userIdCache[senderUserId] = (currentUsername, currentNickname);
+            }
         }
     }
 
@@ -347,12 +496,13 @@ public class TikTokTrackerService : BackgroundService
 
             // Aggregate summaries for Postgres Upsert
             var summaries = giftsToSave
-                .GroupBy(g => new { g.TikTokAccountId, g.SenderUsername })
+                .GroupBy(g => new { g.TikTokAccountId, g.SenderUserId })
                 .Select(group => new
                 {
                     AccountId = group.Key.TikTokAccountId,
-                    Username = group.Key.SenderUsername,
-                    Nickname = group.First().SenderNickname,
+                    UserId = group.Key.SenderUserId,
+                    Username = group.OrderByDescending(x => x.SenderUsername != "unknown" ? 1 : 0).First().SenderUsername,
+                    Nickname = group.OrderByDescending(x => x.SenderNickname != "unknown" ? 1 : 0).First().SenderNickname,
                     TotalDiamonds = group.Sum(g => g.TotalDiamonds),
                     TotalGifts = group.Sum(g => g.Amount),
                     LastGift = group.Max(g => g.Timestamp)
@@ -360,20 +510,21 @@ public class TikTokTrackerService : BackgroundService
 
             const string upsertSql = @"
                 INSERT INTO ""GifterSummaries"" 
-                    (""TikTokAccountId"", ""SenderUsername"", ""SenderNickname"", ""TotalDiamonds"", ""TotalGifts"", ""LastGiftTime"")
+                    (""TikTokAccountId"", ""SenderUserId"", ""SenderUsername"", ""SenderNickname"", ""TotalDiamonds"", ""TotalGifts"", ""LastGiftTime"")
                 VALUES 
-                    (@p0, @p1, @p2, @p3, @p4, @p5)
-                ON CONFLICT (""TikTokAccountId"", ""SenderUsername"") 
+                    (@p0, @p1, @p2, @p3, @p4, @p5, @p6)
+                ON CONFLICT (""TikTokAccountId"", ""SenderUserId"") 
                 DO UPDATE SET 
                     ""TotalDiamonds"" = ""GifterSummaries"".""TotalDiamonds"" + EXCLUDED.""TotalDiamonds"",
                     ""TotalGifts"" = ""GifterSummaries"".""TotalGifts"" + EXCLUDED.""TotalGifts"",
                     ""LastGiftTime"" = EXCLUDED.""LastGiftTime"",
-                    ""SenderNickname"" = EXCLUDED.""SenderNickname"";";
+                    ""SenderUsername"" = CASE WHEN EXCLUDED.""SenderUsername"" != 'unknown' THEN EXCLUDED.""SenderUsername"" ELSE ""GifterSummaries"".""SenderUsername"" END,
+                    ""SenderNickname"" = CASE WHEN EXCLUDED.""SenderNickname"" != 'unknown' THEN EXCLUDED.""SenderNickname"" ELSE ""GifterSummaries"".""SenderNickname"" END;";
 
             foreach (var s in summaries)
             {
                 await db.Database.ExecuteSqlRawAsync(upsertSql, 
-                    new object[] { s.AccountId, s.Username, s.Nickname, s.TotalDiamonds, s.TotalGifts, s.LastGift }, 
+                    new object[] { s.AccountId, s.UserId, s.Username, s.Nickname, s.TotalDiamonds, s.TotalGifts, s.LastGift }, 
                     cancellationToken);
             }
 

@@ -4,250 +4,186 @@
 @using TikTokTracker.Web.Data
 @using TikTokTracker.Web.Models
 @using TikTokTracker.Web.Services
+@using Radzen
+@using Radzen.Blazor
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject TikTokTrackerService TrackerService
+@inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
-<PageTitle>TikTok Tracker Dashboard</PageTitle>
+<PageTitle>TikTok Live Tracker</PageTitle>
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold"><i class="bi bi-broadcast text-danger"></i> TikTok Live Tracker</h1>
-        <a href="/admin" class="btn btn-outline-secondary">
-            <i class="bi bi-gear"></i> Manage Accounts
-        </a>
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-4">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+        <RadzenIcon Icon="broadcast_on_home" IconColor="var(--rz-danger)" Style="font-size: 2rem;" />
+        <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="TikTok Live Tracker" />
+    </RadzenStack>
+    <RadzenButton Click="@(() => NavManager.NavigateTo("/admin"))" Icon="settings" Text="Manage Accounts" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Outlined" />
+</RadzenStack>
+
+@if (errorMessage != null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter">@errorMessage</RadzenAlert>
+}
+else if (accounts == null)
+{
+    <div class="rz-p-12 rz-text-align-center">
+        <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        <RadzenText TextStyle="TextStyle.Subtitle1" class="rz-mt-4" Text="Loading data..." />
     </div>
-
-    @if (errorMessage != null)
+}
+else
+{
+    @if (!accounts.Any())
     {
-        <div class="alert alert-danger">@errorMessage</div>
-    }
-    else if (accounts == null)
-    {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2 text-muted">Loading data...</p>
-        </div>
+        <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
+            No accounts are currently being tracked. <RadzenLink Path="/admin" Text="Add some in the Admin panel" />.
+        </RadzenAlert>
     }
     else
     {
-        @if (!accounts.Any())
-        {
-            <div class="alert alert-info shadow-sm">
-                <i class="bi bi-info-circle me-2"></i> No accounts are currently being tracked.
-                <a href="/admin" class="alert-link">Add some in the Admin panel</a>.
-            </div>
-        }
-        else
-        {
-            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+        <RadzenContentContainer>
+            <RadzenRow Gap="1rem" class="rz-mb-6">
                 @foreach (var account in accounts.OrderByDescending(a => a.IsOnline).ThenByDescending(a => a.CurrentCoins))
                 {
-                    <div class="col">
-                        <div class="card h-100 shadow-sm border-0 bg-light">
-                            <div class="card-body position-relative">
+                    <RadzenColumn Size="12" SizeMD="6" SizeLG="4">
+                        <RadzenCard class="rz-h-100" Style="position: relative;">
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start">
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                                    <RadzenIcon Icon="account_circle" Style="color: var(--rz-primary-light); font-size: 48px;" />
+                                    <RadzenText TextStyle="TextStyle.H6" Text="@("@" + account.Username)" class="rz-m-0" />
+                                </RadzenStack>
+                                <RadzenStack AlignItems="AlignItems.End" Gap="0.25rem">
+                                    @if (account.IsOnline)
+                                    {
+                                        <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Success" IsPill="true" />
+                                        @if (account.IsRecording)
+                                        {
+                                            <RadzenBadge Text="REC" BadgeStyle="BadgeStyle.Danger" IsPill="true" />
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="OFFLINE" BadgeStyle="BadgeStyle.Secondary" IsPill="true" />
+                                    }
+                                </RadzenStack>
+                            </RadzenStack>
 
-                                @if (account.IsOnline)
-                                {
-                                    <span class="position-absolute top-0 end-0 mt-3 me-3 text-danger d-flex align-items-center fw-bold">
-                                        <span class="spinner-grow spinner-grow-sm me-2" role="status" aria-hidden="true" style="width: 0.75rem; height: 0.75rem;"></span>
-                                        LIVE
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="position-absolute top-0 end-0 mt-3 me-3 badge bg-light border text-dark">
-                                        OFFLINE
-                                    </span>
-                                }
+                            <RadzenRow class="rz-mt-6 rz-text-align-center">
+                                <RadzenColumn Size="6" Style="border-right: var(--rz-border-base);">
+                                    <RadzenText TextStyle="TextStyle.Overline" Text="Coins Today" class="rz-display-block rz-mb-1" />
+                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.25rem">
+                                        <RadzenIcon Icon="monetization_on" IconColor="var(--rz-warning)" />
+                                        <RadzenText TextStyle="TextStyle.H5" Text="@account.CurrentCoins.ToString("N0")" class="rz-m-0 rz-color-warning" />
+                                    </RadzenStack>
+                                </RadzenColumn>
+                                <RadzenColumn Size="6">
+                                    <RadzenText TextStyle="TextStyle.Overline" Text="Viewers" class="rz-display-block rz-mb-1" />
+                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.25rem">
+                                        <RadzenIcon Icon="group" IconColor="var(--rz-info)" />
+                                        <RadzenText TextStyle="TextStyle.H5" Text="@(account.IsOnline ? account.ViewerCount.ToString("N0") : "-")" class="rz-m-0 rz-color-info" />
+                                    </RadzenStack>
+                                </RadzenColumn>
+                            </RadzenRow>
 
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="bg-primary text-white rounded-circle d-flex justify-content-center align-items-center" style="width: 50px; height: 50px; font-size: 1.5rem;">
-                                        @account.Username.FirstOrDefault().ToString().ToUpper()
-                                    </div>
-                                    <div class="ms-3">
-                                        <h5 class="card-title mb-0 fs-4 fw-bold text-dark">@@@account.Username</h5>
-                                    </div>
-                                </div>
-
-                                <div class="mt-4 row text-center">
-                                    <div class="col-6 border-end">
-                                        <div class="text-muted small text-uppercase fw-bold">Coins Today</div>
-                                        <div class="fs-3 fw-bold text-warning">
-                                            <i class="bi bi-gem"></i> @account.CurrentCoins.ToString("N0")
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="text-muted small text-uppercase fw-bold">Viewers</div>
-                                        <div class="fs-3 fw-bold text-info">
-                                            <i class="bi bi-people"></i> @(account.IsOnline ? account.ViewerCount.ToString("N0") : "-")
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer bg-white border-top-0 pb-3">
-                                <a href="@account.StreamUrl" target="_blank" class="btn @(account.IsOnline ? "btn-danger" : "btn-outline-secondary") w-100 fw-bold">
-                                    <i class="bi bi-box-arrow-up-right"></i> @(account.IsOnline ? "Watch Stream" : "View Profile")
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+                            <RadzenButton class="rz-mt-4 rz-w-100" Text="@(account.IsOnline ? "Watch Stream" : "View Profile")" 
+                                          ButtonStyle="@(account.IsOnline ? ButtonStyle.Danger : ButtonStyle.Light)"
+                                          Icon="open_in_new" Click="@(() => JSRuntime.InvokeVoidAsync("open", account.StreamUrl, "_blank"))" />
+                        </RadzenCard>
+                    </RadzenColumn>
                 }
-            </div>
-        }
-
-        <div class="row g-4">
-            <!-- Recent Gifts -->
-            <div class="col-xl-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
-                        <h3 class="mb-0 fs-4 fw-bold">Recent Gifts Feed</h3>
-                        <button class="btn btn-sm btn-outline-info" @onclick="ExportGifts">
-                            <i class="bi bi-download"></i> Export JSON
-                        </button>
-                    </div>
-                    <div class="card-body px-4">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>To</th>
-                                        <th>Sender</th>
-                                        <th>Gift</th>
-                                        <th>Diamonds</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @if (recentGifts == null)
-                                    {
-                                        <tr><td colspan="5" class="text-center py-4 text-muted">Loading gifts...</td></tr>
-                                    }
-                                    else if (!recentGifts.Any())
-                                    {
-                                        <tr><td colspan="5" class="text-center py-4 text-muted">No gifts recorded yet.</td></tr>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var gift in recentGifts)
-                                        {
-                                            <tr>
-                                                <td class="text-muted small">@gift.Timestamp.ToLocalTime().ToString("HH:mm:ss")</td>
-                                                <td><span class="badge bg-light text-dark">@@@gift.Account?.Username</span></td>
-                                                <td class="small">
-                                                    <strong>@gift.SenderNickname</strong><br />
-                                                    <span class="text-muted">@@@gift.SenderUsername</span>
-                                                </td>
-                                                <td class="small">@gift.GiftName (@gift.Amount)</td>
-                                                <td><span class="text-warning small">💎</span> @gift.TotalDiamonds</td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                        @if (totalGiftsCount > pageSize)
-                        {
-                            <nav class="mt-3">
-                                <ul class="pagination pagination-sm justify-content-center mb-0">
-                                    <li class="page-item @(currentPage == 1 ? "disabled" : "")">
-                                        <button class="page-link" @onclick="() => ChangePage(currentPage - 1)">Prev</button>
-                                    </li>
-                                    <li class="page-item disabled"><span class="page-link">@currentPage</span></li>
-                                    <li class="page-item @(currentPage * pageSize >= totalGiftsCount ? "disabled" : "")">
-                                        <button class="page-link" @onclick="() => ChangePage(currentPage + 1)">Next</button>
-                                    </li>
-                                </ul>
-                            </nav>
-                        }
-                    </div>
-                </div>
-            </div>
-
-            <!-- Top Gifters -->
-            <div class="col-xl-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h3 class="mb-0 fs-4 fw-bold">Top Gifters</h3>
-                            <button class="btn btn-sm btn-outline-info" @onclick="ExportSummaries">
-                                <i class="bi bi-download"></i> Export JSON
-                            </button>
-                        </div>
-                        <select class="form-select form-select-sm" @onchange="OnRecipientChanged">
-                            <option value="">All tracked accounts</option>
-                            @if (accounts != null)
-                            {
-                                @foreach (var acc in accounts)
-                                {
-                                    <option value="@acc.Id">@@@acc.Username</option>
-                                }
-                            }
-                        </select>
-                    </div>
-                    <div class="card-body px-4">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Target</th>
-                                        <th>Gifter</th>
-                                        <th>Diamonds</th>
-                                        <th>Updated</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @if (topGifters == null)
-                                    {
-                                        <tr><td colspan="4" class="text-center py-4 text-muted">Loading leaderboard...</td></tr>
-                                    }
-                                    else if (!topGifters.Any())
-                                    {
-                                        <tr><td colspan="4" class="text-center py-4 text-muted">No interactions yet.</td></tr>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var summary in topGifters)
-                                        {
-                                            <tr>
-                                                <td><span class="badge bg-light text-dark">@@@summary.Account?.Username</span></td>
-                                                <td class="small">
-                                                    <strong>@summary.SenderNickname</strong><br />
-                                                    <span class="text-muted">@@@summary.SenderUsername</span>
-                                                </td>
-                                                <td class="fw-bold">
-                                                    <span class="text-warning small">💎</span> @summary.TotalDiamonds.ToString("N0")
-                                                </td>
-                                                <td class="text-muted small">@summary.LastGiftTime.ToLocalTime().ToString("MMM dd")</td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                        @if (totalSummaryCount > pageSize)
-                        {
-                            <nav class="mt-3">
-                                <ul class="pagination pagination-sm justify-content-center mb-0">
-                                    <li class="page-item @(currentSummaryPage == 1 ? "disabled" : "")">
-                                        <button class="page-link" @onclick="() => ChangeSummaryPage(currentSummaryPage - 1)">Prev</button>
-                                    </li>
-                                    <li class="page-item disabled"><span class="page-link">@currentSummaryPage</span></li>
-                                    <li class="page-item @(currentSummaryPage * pageSize >= totalSummaryCount ? "disabled" : "")">
-                                        <button class="page-link" @onclick="() => ChangeSummaryPage(currentSummaryPage + 1)">Next</button>
-                                    </li>
-                                </ul>
-                            </nav>
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
+            </RadzenRow>
+        </RadzenContentContainer>
     }
-</div>
+
+    <RadzenRow Gap="2rem">
+        <RadzenColumn Size="12" SizeXL="6">
+            <RadzenCard Variant="Variant.Flat">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" class="rz-mb-4">
+                    <RadzenText TextStyle="TextStyle.H5" Text="Recent Gifts Feed" class="rz-m-0" />
+                    <RadzenButton Icon="download" Text="Export" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Info" Variant="Variant.Outlined" Click="@ExportGifts" />
+                </RadzenStack>
+                <RadzenDataGrid Data="@recentGifts" TItem="GiftTransaction" AllowPaging="false" Density="Density.Compact" class="rz-border-radius-1">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="GiftTransaction" Title="Time" Width="100px">
+                            <Template Context="gift">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@gift.Timestamp.ToLocalTime().ToString("HH:mm:ss")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GiftTransaction" Title="To" Width="120px">
+                            <Template Context="gift">
+                                <RadzenBadge Text="@("@" + (gift.Account?.Username ?? "Unknown"))" IsPill="true" BadgeStyle="BadgeStyle.Light" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GiftTransaction" Title="Sender">
+                            <Template Context="gift">
+                                <RadzenText TextStyle="TextStyle.Body2"><strong>@gift.SenderNickname</strong></RadzenText>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@("@" + gift.SenderUsername)" class="rz-display-block" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GiftTransaction" Title="Gift">
+                            <Template Context="gift">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@($"{gift.GiftName} ({gift.Amount})")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GiftTransaction" Title="Diamonds" Width="100px">
+                            <Template Context="gift">
+                                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-warning">💎 @gift.TotalDiamonds</RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+                @if (totalGiftsCount > pageSize)
+                {
+                    <RadzenPager Count="@totalGiftsCount" PageSize="@pageSize" PageNumbersCount="3" PageChanged="@(args => ChangePage(args.PageIndex + 1))" class="rz-mt-4" />
+                }
+            </RadzenCard>
+        </RadzenColumn>
+
+        <RadzenColumn Size="12" SizeXL="6">
+            <RadzenCard Variant="Variant.Flat">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" class="rz-mb-2">
+                    <RadzenText TextStyle="TextStyle.H5" Text="Top Gifters" class="rz-m-0" />
+                    <RadzenButton Icon="download" Text="Export" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Info" Variant="Variant.Outlined" Click="@ExportSummaries" />
+                </RadzenStack>
+                <RadzenDropDown TValue="int?" Data="@accounts" TextProperty="Username" ValueProperty="Id" 
+                                Placeholder="All tracked accounts" Value="@selectedRecipientId" Change="@OnRecipientChanged" 
+                                class="rz-w-100 rz-mb-4" AllowClear="true" />
+                
+                <RadzenDataGrid Data="@topGifters" TItem="GifterSummary" AllowPaging="false" Density="Density.Compact" class="rz-border-radius-1">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="GifterSummary" Title="Target" Width="120px">
+                            <Template Context="summary">
+                                <RadzenBadge Text="@("@" + (summary.Account?.Username ?? "Unknown"))" IsPill="true" BadgeStyle="BadgeStyle.Light" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterSummary" Title="Gifter">
+                            <Template Context="summary">
+                                <RadzenText TextStyle="TextStyle.Body2"><strong>@summary.SenderNickname</strong></RadzenText>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@("@" + summary.SenderUsername)" class="rz-display-block" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterSummary" Title="Diamonds" Width="120px">
+                            <Template Context="summary">
+                                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-warning" Style="font-weight: bold;">💎 @summary.TotalDiamonds.ToString("N0")</RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterSummary" Title="Updated" Width="100px">
+                            <Template Context="summary">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@summary.LastGiftTime.ToLocalTime().ToString("MMM dd")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+                @if (totalSummaryCount > pageSize)
+                {
+                    <RadzenPager Count="@totalSummaryCount" PageSize="@pageSize" PageNumbersCount="3" PageChanged="@(args => ChangeSummaryPage(args.PageIndex + 1))" class="rz-mt-4" />
+                }
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+}
 
 @code {
     private List<TikTokAccount>? accounts;
@@ -282,14 +218,12 @@
     {
         try
         {
-            // Use in-memory cache from the service instead of querying DB
             var allAccounts = TrackerService.CachedAccounts;
             var allGifts = TrackerService.CachedRecentGifts;
             var allSummaries = TrackerService.CachedTopGifters;
 
             accounts = allAccounts.ToList();
 
-            // Pagination/Filtering in memory for the most recent 50 items stored in cache
             totalGiftsCount = allGifts.Count;
             recentGifts = allGifts
                 .Skip((currentPage - 1) * pageSize)
@@ -315,10 +249,6 @@
         }
     }
 
-    // Keep these empty or remove them as they are now handled by RefreshAllData/Cache
-    private Task LoadRecentGifts(AppDbContext db) => Task.CompletedTask;
-    private Task LoadTopGifters(AppDbContext db) => Task.CompletedTask;
-
     private async Task ChangePage(int newPage)
     {
         currentPage = newPage;
@@ -331,9 +261,9 @@
         await InvokeAsync(RefreshAllData);
     }
 
-    private async Task OnRecipientChanged(ChangeEventArgs e)
+    private async Task OnRecipientChanged(object value)
     {
-        if (int.TryParse(e.Value?.ToString(), out var id)) selectedRecipientId = id;
+        if (value is int id) selectedRecipientId = id;
         else selectedRecipientId = null;
         currentSummaryPage = 1;
         await InvokeAsync(RefreshAllData);

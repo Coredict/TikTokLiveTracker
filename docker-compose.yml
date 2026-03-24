@@ -21,6 +21,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=tiktoktracker;Username=postgres;Password=postgres
+      - Recorder__BaseUrl=http://recorder:8000
     ports:
       - "5000:8080"
     depends_on:
@@ -28,6 +29,20 @@ services:
     volumes:
       - app-keys:/app/keys
 
+  recorder:
+    build:
+      context: ./recorder-service
+      dockerfile: Dockerfile
+    container_name: tiktoktracker-recorder
+    restart: always
+    environment:
+      - TIKTOK_SESSION_ID=e4fcc9a348f1427818b6cabe40aef5a9
+    ports:
+      - "8000:8000"
+    volumes:
+      - tiktok-recordings:/app/recordings
+
 volumes:
   pgdata:
   app-keys:
+  tiktok-recordings:
