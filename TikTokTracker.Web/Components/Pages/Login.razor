@@ -23,7 +23,7 @@
 
                 <RadzenStack Gap="0.5rem" class="rz-w-100">
                     <RadzenText TextStyle="TextStyle.Overline" Text="Password" class="rz-m-0" />
-                    <RadzenPassword Value="@password" Change="@(v => password = v.ToString() ?? "")" @onkeyup="OnKeyUp" class="rz-w-100" />
+                    <RadzenPassword @bind-Value="@password" @onkeyup="OnKeyUp" class="rz-w-100" />
                 </RadzenStack>
 
                 <RadzenButton Text="Login" ButtonStyle="ButtonStyle.Primary" class="rz-w-100" Click="@HandleLogin" />
@@ -55,7 +55,8 @@
         }
         else
         {
-            errorMessage = "Invalid password";
+            expected = Config.GetValue<string>("AdminPassword") ?? "";
+            errorMessage = $"Invalid password. (Expected length: {expected.Length})";
         }
         await Task.CompletedTask;
     }

@@ -40,3 +40,23 @@ h1:focus {
         right: 0.75rem;
         top: 0.5rem;
     }
+
+/* Responsive helpers */
+.rz-flex-wrap {
+    flex-wrap: wrap !important;
+}
+
+@media (max-width: 768px) {
+    .rz-w-xs-100 {
+        width: 100% !important;
+    }
+    .rz-text-align-xs-left {
+        text-align: left !important;
+    }
+    .mobile-hide {
+        display: none !important;
+    }
+    .rz-stack-mobile-column {
+        flex-direction: column !important;
+    }
+}

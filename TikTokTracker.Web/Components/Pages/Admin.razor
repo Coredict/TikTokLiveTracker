@@ -16,21 +16,50 @@
 
 <PageTitle>Admin Panel</PageTitle>
 
+<style>
+    .rz-flex-wrap {
+        flex-wrap: wrap !important;
+    }
+
+    @@media (max-width: 768px) {
+        .mobile-hide {
+            display: none !important;
+        }
+        .rz-w-xs-100 {
+            width: 100% !important;
+            display: block !important;
+            margin-top: 10px;
+        }
+        .header-stack {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+        }
+        .add-account-stack {
+            flex-direction: column !important;
+        }
+        .add-account-input {
+            width: 100% !important;
+            margin-bottom: 10px !important;
+        }
+    }
+</style>
+
 @if (AdminSession.IsAdmin)
 {
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-4">
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Wrap="FlexWrap.Wrap" class="rz-mb-4 rz-flex-wrap header-stack" Style="gap: 1rem;">
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
             <RadzenIcon Icon="admin_panel_settings" Style="font-size: 2rem;" />
             <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="Admin Panel" />
         </RadzenStack>
-        <RadzenButton Text="Logout" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Variant="Variant.Outlined" Click="@Logout" />
+        <RadzenButton Text="Logout" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Variant="Variant.Outlined" Click="@Logout" class="rz-w-xs-100" />
     </RadzenStack>
 
     <RadzenCard class="rz-mb-4">
         <RadzenText TextStyle="TextStyle.H6" Text="Add New Account" class="rz-mb-3" />
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
-            <input @bind="newUsername" placeholder="TikTok Username (without @@)" class="rz-textbox rz-flex-grow-1" />
-            <RadzenButton Text="Add" ButtonStyle="ButtonStyle.Success" Click="@AddAccount" />
+        <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="1rem" class="rz-flex-wrap add-account-stack">
+            <input @bind="newUsername" placeholder="TikTok Username (without @@)" class="rz-textbox rz-flex-grow-1 rz-w-xs-100 add-account-input" />
+            <RadzenButton Text="Add" ButtonStyle="ButtonStyle.Success" Click="@AddAccount" class="rz-w-xs-100" />
         </RadzenStack>
         @if (!string.IsNullOrEmpty(statusMessage))
         {
@@ -40,7 +69,7 @@
         }
     </RadzenCard>
 
-    <RadzenDataGrid Data="@accounts" TItem="TikTokAccount" AllowPaging="false" Density="Density.Default" class="rz-border-radius-1">
+    <RadzenDataGrid Data="@accounts" TItem="TikTokAccount" AllowPaging="true" PageSize="10" Density="Density.Default" Responsive="true" class="rz-border-radius-1">
         <Columns>
             <RadzenDataGridColumn TItem="TikTokAccount" Title="Username">
                 <Template Context="account">
@@ -62,7 +91,7 @@
                     }
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="TikTokAccount" Title="Auto-Record" Width="150px" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Auto-Record" Width="150px" TextAlign="TextAlign.Center" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
                 <Template Context="account">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Center" AlignItems="AlignItems.Center" Gap="0.5rem">
                         <RadzenSwitch TValue="bool" Value="@account.AutoRecord" Change="@(v => OnToggleAccount(v, account))" />
@@ -70,12 +99,12 @@
                     </RadzenStack>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="TikTokAccount" Title="Coins Today" Width="140px" TextAlign="TextAlign.Right">
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Coins Today" Width="140px" TextAlign="TextAlign.Right" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
                 <Template Context="account">
                     <RadzenText TextStyle="TextStyle.Body1" class="rz-color-warning">💎 @account.CurrentCoins.ToString("N0")</RadzenText>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="TikTokAccount" Title="Actions" Width="100px" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn TItem="TikTokAccount" Title="Actions" Width="80px" TextAlign="TextAlign.Center">
                 <Template Context="account">
                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Text" Click="@(args => OnRemoveAccount(args, account))" />
                 </Template>
@@ -91,7 +120,7 @@
             <RadzenText TextStyle="TextStyle.H6" class="rz-m-0">Ongoing Recordings</RadzenText>
         </RadzenStack>
 
-        <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" class="rz-border-radius-1">
+        <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" AllowPaging="true" PageSize="5" Responsive="true" class="rz-border-radius-1">
             <EmptyTemplate>
                 <div class="rz-p-4 rz-text-align-center">
                     <RadzenText TextStyle="TextStyle.Body2" Text="No active recordings at the moment." />
@@ -106,7 +135,7 @@
                         </RadzenStack>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="string" Title="Status">
+                <RadzenDataGridColumn TItem="string" Title="Status" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
                     <Template Context="username">
                         <RadzenText TextStyle="TextStyle.Caption" Text="Recording in progress..." />
                     </Template>
@@ -121,7 +150,7 @@
     </RadzenCard>
 
     <RadzenText TextStyle="TextStyle.H6" class="rz-mb-2">Recorded Files</RadzenText>
-    <RadzenDataGrid Data="@_files" TItem="string" AllowPaging="true" PageSize="10" Density="Density.Compact" class="rz-border-radius-1">
+    <RadzenDataGrid Data="@_files" TItem="string" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
         <EmptyTemplate>
             <div class="rz-p-12 rz-text-align-center">
                 <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-secondary-color);" />
@@ -134,7 +163,7 @@
                     <strong>@file</strong>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="string" Title="Format" Width="100px">
+            <RadzenDataGridColumn TItem="string" Title="Format" Width="100px" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
                 <Template Context="file">
                     <RadzenBadge Text="MP4" BadgeStyle="BadgeStyle.Info" IsPill="true" />
                 </Template>
@@ -162,13 +191,14 @@ else
 }
 
 @code {
-    private List<TikTokAccount>? accounts;
+    private List<TikTokAccount> accounts = new();
     private string newUsername = "";
     private string statusMessage = "";
     private System.Threading.Timer? _timer;
-    private List<string>? _files;
-    private List<string>? _activeUsernames;
+    private List<string> _files = new();
+    private List<string> _activeUsernames = new();
     private int _refreshTick = 0;
+    private bool _disposed = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -176,30 +206,53 @@ else
         {
             await LoadAccounts();
             await RefreshAllRecordings();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AdminSession.IsAdmin && !_disposed)
+        {
             _timer = new System.Threading.Timer(OnTimerCallback, null, 1000, 1000);
         }
+        await Task.CompletedTask;
     }
 
     private async Task LoadAccounts()
     {
+        if (_disposed) return;
         accounts = TrackerService.CachedAccounts.ToList();
         await Task.CompletedTask;
     }
 
     private void OnTimerCallback(object? state)
     {
+        if (_disposed) return;
+
         InvokeAsync(async () =>
         {
-            await LoadAccounts();
-            
-            _refreshTick++;
-            if (_refreshTick >= 5)
+            try 
             {
-                await RefreshAllRecordings();
-                _refreshTick = 0;
+                if (_disposed) return;
+
+                await LoadAccounts();
+                
+                _refreshTick++;
+                if (_refreshTick >= 5)
+                {
+                    await RefreshAllRecordings();
+                    _refreshTick = 0;
+                }
+                
+                if (!_disposed)
+                {
+                    StateHasChanged();
+                }
             }
-            
-            StateHasChanged();
+            catch (Exception)
+            {
+                // Silent catch for secondary render errors during disposal
+            }
         });
     }
 
@@ -289,6 +342,7 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         _timer?.Dispose();
     }
 }
