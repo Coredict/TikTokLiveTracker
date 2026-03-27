@@ -160,6 +160,11 @@
                         <RadzenBadge Text="@FormatActiveDuration(info.Started_At)" BadgeStyle="BadgeStyle.Danger" Variant="Variant.Flat" IsPill="true" />
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="Size" Width="80px" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+                    <Template Context="info">
+                        <RadzenText TextStyle="TextStyle.Caption">@FormatSize(info.Size_Bytes)</RadzenText>
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="" Width="60px" TextAlign="TextAlign.Right">
                     <Template Context="info">
                         <RadzenButton Icon="stop" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall" Variant="Variant.Flat" Click="@(args => StopRecording(info.Username))" />

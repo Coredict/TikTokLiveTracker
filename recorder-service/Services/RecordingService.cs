@@ -138,8 +138,22 @@ public class RecordingService : IRecordingService
 
     public List<ActiveRecordingInfo> GetActiveRecordings()
     {
-        return _activeRecordings.Select(kvp => new ActiveRecordingInfo(kvp.Key, kvp.Value.StartedAt))
-            .OrderBy(r => r.username)
-            .ToList();
+        return _activeRecordings.Select(kvp => {
+            long size = 0;
+            try
+            {
+                if (File.Exists(kvp.Value.FilePath))
+                {
+                    size = new FileInfo(kvp.Value.FilePath).Length;
+                }
+            }
+            catch (Exception)
+            {
+                // Ignore errors reading file size
+            }
+            return new ActiveRecordingInfo(kvp.Key, kvp.Value.StartedAt, size);
+        })
+        .OrderBy(r => r.username)
+        .ToList();
     }
 }

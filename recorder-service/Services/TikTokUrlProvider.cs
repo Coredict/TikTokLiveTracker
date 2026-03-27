@@ -22,15 +22,27 @@ public class TikTokUrlProvider : ITikTokUrlProvider
 
     public async Task<string?> GetStreamUrlAsync(string username)
     {
+        string? cookieFile = null;
         try
         {
             var url = $"https://www.tiktok.com/@{username}/live";
-            var arguments = new List<string> { "-g", url };
+            var arguments = new List<string> 
+            { 
+                "-g", 
+                "--impersonate", "chrome",
+                url 
+            };
             
             if (!string.IsNullOrEmpty(_sessionId))
             {
-                arguments.Add("--add-header");
-                arguments.Add($"Cookie:sessionid={_sessionId}");
+                // Create a temporary cookie file in Netscape format
+                cookieFile = Path.Combine(Path.GetTempPath(), $"tiktok_cookies_{Guid.NewGuid()}.txt");
+                var cookieContent = "# Netscape HTTP Cookie File\n" +
+                                   $".tiktok.com\tTRUE\t/\tTRUE\t0\tsessionid\t{_sessionId}\n";
+                await File.WriteAllTextAsync(cookieFile, cookieContent);
+                
+                arguments.Add("--cookies");
+                arguments.Add(cookieFile);
             }
 
             _logger.LogInformation("Fetching stream URL for {Username} via yt-dlp", username);
@@ -55,6 +67,13 @@ public class TikTokUrlProvider : ITikTokUrlProvider
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching stream URL for {Username}", username);
+        }
+        finally
+        {
+            if (cookieFile != null && File.Exists(cookieFile))
+            {
+                try { File.Delete(cookieFile); } catch { }
+            }
         }
 
         return null;
