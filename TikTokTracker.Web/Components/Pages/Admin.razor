@@ -101,7 +101,7 @@
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="TikTokAccount" Title="Coins Today" Width="140px" TextAlign="TextAlign.Right" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
                 <Template Context="account">
-                    <RadzenText TextStyle="TextStyle.Body1" class="rz-color-warning">💎 @account.CurrentCoins.ToString("N0")</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body1" class="rz-color-warning">💎 @account.CoinsToday.ToString("N0")</RadzenText>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="TikTokAccount" Title="Actions" Width="80px" TextAlign="TextAlign.Center">

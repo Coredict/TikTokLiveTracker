@@ -93,7 +93,7 @@ public class TikTokTrackerService : BackgroundService
                 await PollAllAccountsAsync(stoppingToken);
 
                 // Periodic flush of gifts
-                if (!_giftBuffer.IsEmpty && (DateTime.UtcNow - _lastFlushTime > TimeSpan.FromMinutes(1)))
+                if (!_giftBuffer.IsEmpty && (DateTime.UtcNow - _lastFlushTime > TimeSpan.FromSeconds(15)))
                 {
                     await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
                     await FlushGiftsAsync(db, stoppingToken);
@@ -490,7 +490,7 @@ public class TikTokTrackerService : BackgroundService
             foreach (var total in accountTotals)
             {
                 var acc = await db.Accounts.FindAsync(new object[] { total.Id }, cancellationToken);
-                if (acc != null) acc.CurrentCoins += total.Total;
+                if (acc != null) acc.CoinsToday += total.Total;
             }
 
             await db.SaveChangesAsync(cancellationToken);

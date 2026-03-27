@@ -37,6 +37,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<TikTokTrackerService>();
 builder.Services.AddSingleton<RecorderClient>();
 builder.Services.AddHostedService<TikTokTrackerService>(sp => sp.GetRequiredService<TikTokTrackerService>());
+builder.Services.AddHostedService<MidnightResetService>();
 
 var app = builder.Build();
 
@@ -55,11 +56,23 @@ using (var scope = app.Services.CreateScope())
             ""ProfileImageUrl"" TEXT,
             ""IsOnline"" BOOLEAN NOT NULL,
             ""ViewerCount"" INTEGER NOT NULL,
-            ""CurrentCoins"" INTEGER NOT NULL,
+            ""CoinsToday"" INTEGER NOT NULL DEFAULT 0,
             ""AutoRecord"" BOOLEAN NOT NULL DEFAULT FALSE
         );
     ";
     db.Database.ExecuteSqlRaw(accountsSql);
+
+    // Migration logic for renaming CurrentCoins to CoinsToday if transitioning from old schema
+    try {
+        db.Database.ExecuteSqlRaw(@"
+            DO $$ 
+            BEGIN 
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Accounts' AND column_name='CurrentCoins') THEN
+                    ALTER TABLE ""Accounts"" RENAME COLUMN ""CurrentCoins"" TO ""CoinsToday"";
+                END IF;
+            END $$;
+        ");
+    } catch { }
     
     // Ensure column exists for already created tables
     try {
@@ -101,6 +114,19 @@ using (var scope = app.Services.CreateScope())
         CREATE INDEX IF NOT EXISTS ""IX_GifterSummaries_TikTokAccountId"" ON ""GifterSummaries"" (""TikTokAccountId"");
     ";
     db.Database.ExecuteSqlRaw(summarySql);
+
+    // DailyCoinEarnings table
+    var dailyEarningsSql = @"
+        CREATE TABLE IF NOT EXISTS ""DailyCoinEarnings"" (
+            ""Id"" SERIAL PRIMARY KEY,
+            ""TikTokAccountId"" INTEGER NOT NULL,
+            ""Date"" TIMESTAMP WITH TIME ZONE NOT NULL,
+            ""Coins"" INTEGER NOT NULL,
+            CONSTRAINT ""FK_DailyCoinEarnings_Accounts_TikTokAccountId"" FOREIGN KEY (""TikTokAccountId"") REFERENCES ""Accounts"" (""Id"") ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS ""IX_DailyCoinEarnings_TikTokAccountId"" ON ""DailyCoinEarnings"" (""TikTokAccountId"");
+    ";
+    db.Database.ExecuteSqlRaw(dailyEarningsSql);
     
     // Add columns if they don't exist
     try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Gifts"" ADD COLUMN IF NOT EXISTS ""SenderUserId"" TEXT NOT NULL DEFAULT '';"); } catch { }
