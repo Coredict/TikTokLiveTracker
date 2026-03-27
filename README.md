@@ -1,87 +1,65 @@
 # TikTok Live Tracker
 
-A high-performance Blazor Server application designed to monitor TikTok live streams, track real-time gift donations, and automatically record live video. Built with .NET 10, Python, PostgreSQL, and Docker.
+TikTok Live Tracker is a .NET 10 app for monitoring TikTok live accounts, capturing gift events in real time, and recording streams to MP4.
 
-![TikTok Tracker Preview](https://via.placeholder.com/800x400?text=TikTok+Live+Tracker+Dashboard) *(Replace with actual screenshot)*
+## Features
 
-## 🚀 Features
+- Real-time live status and gift tracking for configured TikTok accounts.
+- Stream recording via `yt-dlp` + `ffmpeg` through a dedicated recorder service.
+- Blazor Server dashboard with leaderboard and admin pages.
+- Batched write strategy for gift events to reduce database I/O.
+- JSON export for recent gifts and top gifters.
+- Docker volumes for persistent database, recordings, and app key storage.
 
-- **Real-time Monitoring**: Track live status and viewer counts for multiple TikTok accounts simultaneously.
-- **Live Stream Recording**: Automatically or manually record live streams to MP4 files using `ffmpeg` and `yt-dlp`.
-- **Gift Tracking**: Automatically captures every gift received, including sender nicknames, usernames, and diamond values.
-- **In-Memory Caching**: Implements a high-performance caching layer in the background service, allowing for **1-second UI refreshes** with zero database `SELECT` load.
-- **Top Gifters Leaderboard**: Ranked lists of contributors per account with advanced filtering and pagination.
-- **Batch Processing**: Individual gift events are buffered and flushed to the database in batches every minute to protect database IO.
-- **JSON Export**: Export recent gifts and top gifter data as formatted JSON files directly from the browser.
-- **Containerized Recovery**: Uses persistent Docker volumes for PostgreSQL data, recorded videos, and ASP.NET Core Data Protection keys.
+## Stack
 
-## 🛠️ Tech Stack
+- `TikTokTracker.Web`: ASP.NET Core / Blazor Server (.NET 10)
+- `recorder-service`: ASP.NET Core Web API (.NET 10)
+- Database: PostgreSQL 16
+- UI: Radzen Blazor
+- TikTok events: [TikTokLiveSharp](https://github.com/FrankRabelo/TikTokLiveSharp)
 
-### Web Interface & Monitoring
-- **Frontend/Backend**: .NET 10 (ASP.NET Core / Blazor Server)
-- **Database**: PostgreSQL 16
-- **Real-time Events**: [TikTokLiveSharp](https://github.com/FrankRabelo/TikTokLiveSharp)
-- **UI Components**: Radzen Blazor
-
-### Recording Service
-- **Framework**: .NET 10 (Web API)
-- **Stream Extraction**: [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- **Video Processing**: FFmpeg
-
-## 🏁 Getting Started
+## Quick Start
 
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (optional for local development)
+- Optional: [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for local development outside containers
 
-### Configuration
+### Configure `TIKTOK_SESSION_ID`
 
-The recorder service supports age-restricted streams if a valid TikTok session ID is provided.
+If you want improved access to age-restricted streams, set `TIKTOK_SESSION_ID` for both `app` and `recorder` in `docker-compose.yml`.
 
-1. Rename `.env.example` to `.env` (if available) or set environment variables in `docker-compose.yml`.
-2. **TIKTOK_SESSION_ID**: Your browser's session ID from tiktok.com (found in cookies).
+> Security note: never commit a real session ID to source control. Use a local-only value and rotate it if exposed.
 
-### Installation
+### Run with Docker
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/pasti1/TikTokTracker.git
-   cd TikTokTracker
-   ```
+```bash
+git clone https://github.com/pasti1/TikTokTracker.git
+cd TikTokTracker
+docker compose up --build
+```
 
-2. Start the services using Docker Compose:
-   ```bash
-   docker compose up --build
-   ```
+### Endpoints
 
-3. Access the application:
-   - **Dashboard**: `http://localhost:5000`
-   - **Admin Panel**: `http://localhost:5000/admin`
-    - **Recorder API**: `http://localhost:8001/health/live` (Health check)
+- Dashboard: `http://localhost:5000`
+- Admin: `http://localhost:5000/admin`
+- Recorder health: `http://localhost:8001/health/live`
 
-## 🏗️ Architecture
+## Project Layout
 
-The application is split into two primary services:
+- `TikTokTracker.Web`: UI, monitoring, TikTok event ingestion, and recorder API orchestration
+- `recorder-service`: recording API and process management for `yt-dlp`/`ffmpeg`
+- `TikTokTracker.Tests`: test project
 
-1. **TikTokTracker.Web (.NET)**:
-   - Manages the UI and monitoring logic.
-   - Connects to TikTok via WebSockets for real-time gift events.
-   - Communicates with the `recorder-service` via a REST client to trigger/stop recordings.
+## Persistence
 
-2. **Recorder Service (.NET)**:
-    - A lightweight Web API service dedicated to video recording.
-   - Uses `yt-dlp` to extract the best possible HLS/RTMP stream URL.
-   - Spawns `ffmpeg` subprocesses for robust, low-overhead recording to disk.
+Docker volumes used by default:
 
-## 🧹 Maintenance
+- `pgdata`: PostgreSQL data
+- `tiktok-recordings`: recorded MP4 output
+- `app-keys`: ASP.NET Core data-protection keys
 
-- **Auto-Cleanup**: The system purges individual gift transactions older than 24 hours to keep the database size manageable.
-- **Persistence**: 
-  - `pgdata`: Database storage.
-  - `tiktok-recordings`: Recorded MP4 files.
-  - `app-keys`: Auth tokens and session persistence.
+## License
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Licensed under MIT. See `LICENSE`.
