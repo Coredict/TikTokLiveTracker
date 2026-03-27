@@ -87,9 +87,12 @@ else
                                 </RadzenColumn>
                             </RadzenRow>
 
-                            <RadzenButton class="rz-mt-4 rz-w-100" Text="@(account.IsOnline ? "Watch Stream" : "View Profile")" 
-                                          ButtonStyle="@(account.IsOnline ? ButtonStyle.Danger : ButtonStyle.Light)"
-                                          Icon="open_in_new" Click="@(() => JSRuntime.InvokeVoidAsync("open", account.StreamUrl, "_blank"))" />
+                            <a href="@account.StreamUrl" target="_blank" 
+                               class="rz-button rz-button-md rz-variant-filled @(account.IsOnline ? "rz-danger" : "rz-light") rz-shade-default rz-mt-4 rz-w-100"
+                               style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <RadzenIcon Icon="open_in_new" />
+                                <span class="rz-button-text">@(account.IsOnline ? "Watch Stream" : "View Profile")</span>
+                            </a>
                         </RadzenCard>
                     </RadzenColumn>
                 }
