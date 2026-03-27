@@ -465,7 +465,7 @@ public class TikTokTrackerService : BackgroundService
         }
     }
 
-    public async Task ManualFlushAsync(CancellationToken ct = default)
+    public virtual async Task ManualFlushAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         await FlushGiftsAsync(db, ct);

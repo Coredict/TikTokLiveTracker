@@ -103,11 +103,11 @@ public class MidnightResetService : BackgroundService
         using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
         var archivalDate = _systemClock.Today.AddDays(-1);
-        var accountsWithCoins = await db.Accounts.Where(a => a.CoinsToday > 0).ToListAsync(cancellationToken);
+        var allAccounts = await db.Accounts.ToListAsync(cancellationToken);
 
-        if (accountsWithCoins.Any())
+        if (allAccounts.Any())
         {
-            foreach (var account in accountsWithCoins)
+            foreach (var account in allAccounts)
             {
                 _logger.LogInformation("Archiving {Coins} coins for @{Username}", account.CoinsToday, account.Username);
                 
@@ -124,7 +124,7 @@ public class MidnightResetService : BackgroundService
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", accountsWithCoins.Count);
+                _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", allAccounts.Count);
                 
                 // Save reset date after successful DB update
                 await SaveLastResetDateAsync(_systemClock.Today);
@@ -136,8 +136,8 @@ public class MidnightResetService : BackgroundService
         }
         else
         {
-            _logger.LogInformation("No accounts had coins to archive today.");
-            // Even if no coins, mark the day as reset so we don't keep checking on startup
+            _logger.LogInformation("No accounts found to archive.");
+            // Even if no accounts, mark the day as reset so we don't keep checking on startup
             await SaveLastResetDateAsync(_systemClock.Today);
         }
     }

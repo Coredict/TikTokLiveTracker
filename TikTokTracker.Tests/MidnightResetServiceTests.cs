@@ -45,7 +45,7 @@ public class MidnightResetServiceTests
         _serviceProviderMock.Setup(s => s.GetService(typeof(IDbContextFactory<AppDbContext>)))
             .Returns(_dbFactoryMock.Object);
         _serviceProviderMock.Setup(s => s.GetService(typeof(TikTokTrackerService)))
-            .Returns((TikTokTrackerService)null);
+            .Returns((TikTokTrackerService?)null);
     }
 
     [Fact]
@@ -71,19 +71,23 @@ public class MidnightResetServiceTests
 
         // Act
         var method = typeof(MidnightResetService).GetMethod("PerformResetAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
         try
         {
-            await (Task)method.Invoke(service, new object[] { CancellationToken.None });
+            var task = method.Invoke(service, new object[] { CancellationToken.None }) as Task;
+            Assert.NotNull(task);
+            await task;
         }
         catch (TargetInvocationException ex)
         {
-            throw ex.InnerException;
+            throw ex.InnerException!;
         }
 
         // Assert
         using (var db = new AppDbContext(_dbContextOptions))
         {
             var account = await db.Accounts.FindAsync(1);
+            Assert.NotNull(account);
             Assert.Equal(0, account.CoinsToday);
             var archival = await db.DailyCoinEarnings.FirstOrDefaultAsync(e => e.TikTokAccountId == 1);
             Assert.NotNull(archival);
@@ -118,9 +122,10 @@ public class MidnightResetServiceTests
         
         // Act
         // We run ExecuteAsync but cancel it immediately after it starts
-        var executeTask = typeof(MidnightResetService)
-            .GetMethod("ExecuteAsync", BindingFlags.NonPublic | BindingFlags.Instance)
-            .Invoke(service, new object[] { cts.Token }) as Task;
+        var method = typeof(MidnightResetService).GetMethod("ExecuteAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var executeTask = method.Invoke(service, new object[] { cts.Token }) as Task;
+        Assert.NotNull(executeTask);
 
         await Task.Delay(50); // Give it a bit of time to run one loop
         cts.Cancel();
@@ -153,9 +158,10 @@ public class MidnightResetServiceTests
         using var cts = new CancellationTokenSource();
         
         // Act
-        var executeTask = typeof(MidnightResetService)
-            .GetMethod("ExecuteAsync", BindingFlags.NonPublic | BindingFlags.Instance)
-            .Invoke(service, new object[] { cts.Token }) as Task;
+        var method = typeof(MidnightResetService).GetMethod("ExecuteAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var executeTask = method.Invoke(service, new object[] { cts.Token }) as Task;
+        Assert.NotNull(executeTask);
 
         await Task.Delay(50);
         cts.Cancel();
@@ -164,5 +170,127 @@ public class MidnightResetServiceTests
         // Assert
         // Verify that PerformResetAsync logic was NOT triggered (no file write for today)
         _fileSystemMock.Verify(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PerformResetAsync_ShouldArchiveZeroCoins_WhenNoCoinsEarned()
+    {
+        // Arrange
+        var today = new DateTime(2026, 3, 27);
+        _systemClockMock.Setup(c => c.Now).Returns(today);
+        _systemClockMock.Setup(c => c.Today).Returns(today.Date);
+
+        using (var db = new AppDbContext(_dbContextOptions))
+        {
+            // Add an account with 0 coins
+            db.Accounts.Add(new TikTokAccount { Id = 3, Username = "zeroUser", CoinsToday = 0 });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new MidnightResetService(
+            _serviceProviderMock.Object,
+            _loggerMock.Object,
+            _systemClockMock.Object,
+            _fileSystemMock.Object);
+
+        // Act
+        var method = typeof(MidnightResetService).GetMethod("PerformResetAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var task = method.Invoke(service, new object[] { CancellationToken.None }) as Task;
+        Assert.NotNull(task);
+        await task;
+
+        // Assert
+        using (var db = new AppDbContext(_dbContextOptions))
+        {
+            var archival = await db.DailyCoinEarnings.FirstOrDefaultAsync(e => e.TikTokAccountId == 3);
+            Assert.NotNull(archival);
+            Assert.Equal(0, archival.Coins);
+            Assert.Equal(today.Date.AddDays(-1), archival.Date);
+        }
+        
+        // Should still update the last reset file
+        _fileSystemMock.Verify(f => f.WriteAllTextAsync(It.IsAny<string>(), today.ToString("yyyy-MM-dd")), Times.Once);
+    }
+
+    [Fact]
+    public async Task PerformResetAsync_ShouldCallManualFlush_WhenTrackerServiceIsAvailable()
+    {
+        // Arrange
+        var today = new DateTime(2026, 3, 27);
+        _systemClockMock.Setup(c => c.Now).Returns(today);
+        _systemClockMock.Setup(c => c.Today).Returns(today.Date);
+
+        var httpClientFactoryMock = new Mock<IHttpClientFactory>();
+        httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
+
+        var trackerMock = new Mock<TikTokTrackerService>(null!, null!, httpClientFactoryMock.Object, null!, null!);
+        _serviceProviderMock.Setup(s => s.GetService(typeof(TikTokTrackerService)))
+            .Returns(trackerMock.Object);
+
+        var service = new MidnightResetService(
+            _serviceProviderMock.Object,
+            _loggerMock.Object,
+            _systemClockMock.Object,
+            _fileSystemMock.Object);
+
+        // Act
+        var method = typeof(MidnightResetService).GetMethod("PerformResetAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var task = method.Invoke(service, new object[] { CancellationToken.None }) as Task;
+        Assert.NotNull(task);
+        await task;
+
+        // Assert
+        trackerMock.Verify(t => t.ManualFlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PerformResetAsync_ShouldContinue_WhenManualFlushFails()
+    {
+        // Arrange
+        var today = new DateTime(2026, 3, 27);
+        _systemClockMock.Setup(c => c.Now).Returns(today);
+        _systemClockMock.Setup(c => c.Today).Returns(today.Date);
+
+        var httpClientFactoryMock = new Mock<IHttpClientFactory>();
+        httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
+
+        var trackerMock = new Mock<TikTokTrackerService>(null!, null!, httpClientFactoryMock.Object, null!, null!);
+        trackerMock.Setup(t => t.ManualFlushAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Flush failed"));
+            
+        _serviceProviderMock.Setup(s => s.GetService(typeof(TikTokTrackerService)))
+            .Returns(trackerMock.Object);
+
+        using (var db = new AppDbContext(_dbContextOptions))
+        {
+            db.Accounts.Add(new TikTokAccount { Id = 2, Username = "user2", CoinsToday = 50 });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new MidnightResetService(
+            _serviceProviderMock.Object,
+            _loggerMock.Object,
+            _systemClockMock.Object,
+            _fileSystemMock.Object);
+
+        // Act
+        var method = typeof(MidnightResetService).GetMethod("PerformResetAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var task = method.Invoke(service, new object[] { CancellationToken.None }) as Task;
+        Assert.NotNull(task);
+        await task;
+
+        // Assert
+        // Reset should still complete even if flush failed
+        using (var db = new AppDbContext(_dbContextOptions))
+        {
+            var account = await db.Accounts.FindAsync(2);
+            Assert.NotNull(account);
+            Assert.Equal(0, account.CoinsToday);
+            Assert.True(await db.DailyCoinEarnings.AnyAsync(e => e.TikTokAccountId == 2));
+        }
+        _fileSystemMock.Verify(f => f.WriteAllTextAsync(It.IsAny<string>(), today.ToString("yyyy-MM-dd")), Times.Once);
     }
 }
