@@ -54,12 +54,26 @@ public class RecordingService : IRecordingService
             {
                 try
                 {
+                    var stderr = new System.Text.StringBuilder();
                     var result = await Cli.Wrap("ffmpeg")
-                        .WithArguments(new[] { "-i", streamUrl, "-c", "copy", "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-y", filepath })
+                        .WithArguments(new[] { 
+                            "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                            "-i", streamUrl, 
+                            "-c", "copy", 
+                            "-f", "mp4", 
+                            "-movflags", "frag_keyframe+empty_moov+default_base_moof", 
+                            "-y", filepath 
+                        })
+                        .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stderr))
                         .WithValidation(CommandResultValidation.None)
                         .ExecuteAsync(cts.Token);
                     
                     _logger.LogInformation("ffmpeg process for {Username} finished with code {ExitCode}", username, result.ExitCode);
+                    if (result.ExitCode != 0)
+                    {
+                        var errorLog = stderr.ToString();
+                        _logger.LogWarning("ffmpeg for {Username} exited with errors: {Error}", username, errorLog);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
