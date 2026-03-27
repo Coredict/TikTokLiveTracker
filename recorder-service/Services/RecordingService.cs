@@ -60,6 +60,7 @@ public class RecordingService : IRecordingService
                             "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                             "-i", streamUrl, 
                             "-c", "copy", 
+                            "-bsf:a", "aac_adtstoasc",
                             "-f", "mp4", 
                             "-movflags", "frag_keyframe+empty_moov+default_base_moof", 
                             "-y", filepath 
@@ -92,8 +93,7 @@ public class RecordingService : IRecordingService
                             if (File.Exists(info.FilePath))
                             {
                                 var fileInfo = new FileInfo(info.FilePath);
-                                // Check if file is at least 150KB (approx 153,600 bytes)
-                                if (fileInfo.Length < 150 * 1024)
+                                if (fileInfo.Length < 300 * 1024)
                                 {
                                     File.Delete(info.FilePath);
                                     _logger.LogWarning("Discarding recording for {Username} - file too small ({Size} bytes), likely a failed stream connection.", username, fileInfo.Length);
