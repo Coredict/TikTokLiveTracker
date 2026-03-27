@@ -1,0 +1,108 @@
+@page "/analytics"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using TikTokTracker.Web.Data
+@using TikTokTracker.Web.Models
+@using TikTokTracker.Web.Services
+@using Radzen
+@using Radzen.Blazor
+@inject TikTokTrackerService TrackerService
+
+<PageTitle>Analytics - TikTok Live Tracker</PageTitle>
+
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" class="rz-mb-4">
+    <RadzenIcon Icon="analytics" Style="font-size: 2rem; color: var(--rz-secondary);" />
+    <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="Earnings Analytics" />
+</RadzenStack>
+
+<RadzenRow Gap="2rem">
+    <RadzenColumn Size="12">
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-4">
+                <RadzenText TextStyle="TextStyle.H5" Text="Daily Coin Earnings (Last 30 Days)" class="rz-m-0" />
+                <RadzenDropDown TValue="int?" Data="@accounts" TextProperty="Username" ValueProperty="Id" 
+                                Placeholder="All Accounts" Value="@selectedAccountId" Change="@OnAccountChanged" 
+                                AllowClear="true" Style="width: 250px;" />
+            </RadzenStack>
+
+            @if (chartData == null)
+            {
+                <div class="rz-p-12 rz-text-align-center">
+                    <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                    <RadzenText TextStyle="TextStyle.Subtitle1" class="rz-mt-4" Text="Loading analytics..." />
+                </div>
+            }
+            else if (!chartData.Any())
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
+                    No historical data available yet. Data is archived daily at midnight.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenChart>
+                    <RadzenColumnSeries Data="@chartData" CategoryProperty="DateStr" Title="Coins" ValueProperty="Coins" LineType="LineType.Dashed" />
+                    <RadzenCategoryAxis Padding="20">
+                        <RadzenAxisTitle Text="Date" />
+                    </RadzenCategoryAxis>
+                    <RadzenValueAxis>
+                        <RadzenGridLines Visible="true" />
+                        <RadzenAxisTitle Text="Coins Collected" />
+                    </RadzenValueAxis>
+                    <RadzenChartTooltipOptions Shared="true" />
+                </RadzenChart>
+            }
+        </RadzenCard>
+    </RadzenColumn>
+</RadzenRow>
+
+@code {
+    private List<TikTokAccount>? accounts;
+    private List<DailyCoinEarning>? allEarnings;
+    private List<ChartDataItem>? chartData;
+    private int? selectedAccountId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        accounts = TrackerService.CachedAccounts.ToList();
+        allEarnings = await TrackerService.GetDailyCoinEarningsAsync(100);
+        UpdateChartData();
+    }
+
+    private void UpdateChartData()
+    {
+        if (allEarnings == null) return;
+
+        var query = allEarnings.AsQueryable();
+        if (selectedAccountId.HasValue)
+        {
+            query = query.Where(e => e.TikTokAccountId == selectedAccountId.Value);
+        }
+
+        // Aggregate by date
+        chartData = query
+            .GroupBy(e => e.Date.Date)
+            .Select(g => new ChartDataItem
+            {
+                DateStr = g.Key.ToString("MMM dd"),
+                Coins = g.Sum(e => e.Coins),
+                SortDate = g.Key
+            })
+            .OrderBy(i => i.SortDate)
+            .ToList();
+    }
+
+    private void OnAccountChanged(object value)
+    {
+        if (value is int id) selectedAccountId = id;
+        else selectedAccountId = null;
+        UpdateChartData();
+    }
+
+    public class ChartDataItem
+    {
+        public string DateStr { get; set; } = "";
+        public int Coins { get; set; }
+        public DateTime SortDate { get; set; }
+    }
+}

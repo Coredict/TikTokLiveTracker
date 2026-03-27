@@ -252,6 +252,21 @@ public class TikTokTrackerService : BackgroundService
         return false;
     }
 
+    public async Task<List<DailyCoinEarning>> GetDailyCoinEarningsAsync(int? limit = 30)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var query = db.DailyCoinEarnings
+            .Include(e => e.Account)
+            .OrderByDescending(e => e.Date);
+            
+        if (limit.HasValue)
+        {
+            return await query.Take(limit.Value).ToListAsync();
+        }
+        
+        return await query.ToListAsync();
+    }
+
     private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         try
