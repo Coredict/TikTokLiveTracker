@@ -58,4 +58,4 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
     Predicate = check => check.Tags.Contains("ready")
 });
 
-app.Run("http://0.0.0.0:8000");
+app.Run("http://0.0.0.0:8001");

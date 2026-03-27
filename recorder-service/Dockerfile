@@ -37,7 +37,7 @@ COPY --from=publish /app/publish .
 RUN mkdir -p /app/recordings
 
 # Make port 8000 available
-EXPOSE 8000
+EXPOSE 8001
 
 # Set environment variables
 ENV TIKTOK_SESSION_ID=""

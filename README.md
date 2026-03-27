@@ -24,10 +24,9 @@ A high-performance Blazor Server application designed to monitor TikTok live str
 - **UI Components**: Radzen Blazor
 
 ### Recording Service
-- **Framework**: Python 3.12 (FastAPI)
+- **Framework**: .NET 10 (Web API)
 - **Stream Extraction**: [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - **Video Processing**: FFmpeg
-- **Client**: [TikTokLive (Python)](https://github.com/isaackogan/TikTokLive)
 
 ## 🏁 Getting Started
 
@@ -59,7 +58,7 @@ The recorder service supports age-restricted streams if a valid TikTok session I
 3. Access the application:
    - **Dashboard**: `http://localhost:5000`
    - **Admin Panel**: `http://localhost:5000/admin`
-   - **Recorder API**: `http://localhost:8000/docs` (Swagger UI)
+    - **Recorder API**: `http://localhost:8001/health/live` (Health check)
 
 ## 🏗️ Architecture
 
@@ -70,8 +69,8 @@ The application is split into two primary services:
    - Connects to TikTok via WebSockets for real-time gift events.
    - Communicates with the `recorder-service` via a REST client to trigger/stop recordings.
 
-2. **Recorder Service (Python)**:
-   - A lightweight FastAPI service dedicated to video recording.
+2. **Recorder Service (.NET)**:
+    - A lightweight Web API service dedicated to video recording.
    - Uses `yt-dlp` to extract the best possible HLS/RTMP stream URL.
    - Spawns `ffmpeg` subprocesses for robust, low-overhead recording to disk.
 

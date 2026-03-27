@@ -13,7 +13,7 @@ public class RecorderClient
     {
         _httpClient = httpClient;
         _logger = logger;
-        _baseUrl = configuration["Recorder:BaseUrl"] ?? "http://recorder:8000";
+        _baseUrl = configuration["Recorder:BaseUrl"] ?? "http://recorder:8001";
     }
 
     public async Task StartRecordingAsync(string username)
