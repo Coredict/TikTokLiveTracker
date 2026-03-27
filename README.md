@@ -59,7 +59,7 @@ The recorder service supports age-restricted streams if a valid TikTok session I
 3. Access the application:
    - **Dashboard**: `http://localhost:5000`
    - **Admin Panel**: `http://localhost:5000/admin`
-   - **Recorder API**: `http://localhost:8000/docs` (Swagger UI)
+   - **Recorder API**: `http://localhost:8010/docs` (Swagger UI)
 
 ## 🏗️ Architecture
 

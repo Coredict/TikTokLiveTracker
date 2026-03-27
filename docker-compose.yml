@@ -37,7 +37,7 @@ services:
     environment:
       - TIKTOK_SESSION_ID=f400113f39e0ffaf4ef6ab03317aaadb
     ports:
-      - "8000:8000"
+      - "8010:8010"
     volumes:
       - tiktok-recordings:/app/recordings
 

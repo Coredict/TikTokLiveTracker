@@ -24,7 +24,7 @@ docker volume create tiktok-recordings
 
 # Run the container using the volume
 docker run -d `
-  -p 8000:8000 `
+  -p 8010:8010 `
   -v tiktok-recordings:/app/recordings `
   --name tiktok-recorder `
   tiktok-recorder
@@ -33,7 +33,7 @@ docker run -d `
 #### Option B: Bind Mount (Directly to your folder)
 ```powershell
 docker run -d `
-  -p 8000:8000 `
+  -p 8010:8010 `
   -v ${PWD}/recordings:/app/recordings `
   --name tiktok-recorder `
   tiktok-recorder
@@ -44,7 +44,7 @@ docker run -d `
 ### Start Recording
 `POST /record` with the TikTok username.
 ```bash
-curl -X POST http://localhost:8000/record `
+curl -X POST http://localhost:8010/record `
   -H "Content-Type: application/json" `
   -d '{"username": "khaby.lame"}'
 ```
@@ -52,19 +52,19 @@ curl -X POST http://localhost:8000/record `
 ### Stop Recording
 `DELETE /record/{username}`
 ```bash
-curl -X DELETE http://localhost:8000/record/khaby.lame
+curl -X DELETE http://localhost:8010/record/khaby.lame
 ```
 
 ### List Active Recordings
 `GET /recordings/active`
 ```bash
-curl http://localhost:8000/recordings/active
+curl http://localhost:8010/recordings/active
 ```
 
 ### List Recorded Files
 `GET /recordings/files`
 ```bash
-curl http://localhost:8000/recordings/files
+curl http://localhost:8010/recordings/files
 ```
 
 ## Persistence Notes

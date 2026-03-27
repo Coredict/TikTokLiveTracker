@@ -22,8 +22,8 @@ COPY . .
 # Create a directory for recordings
 RUN mkdir -p /app/recordings
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
+# Make port 8010 available to the world outside this container
+EXPOSE 8010
 
 # Run main.py when the container launches
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010"]

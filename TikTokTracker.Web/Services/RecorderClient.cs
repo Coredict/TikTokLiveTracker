@@ -7,7 +7,7 @@ public class RecorderClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RecorderClient> _logger;
-    private const string BaseUrl = "http://recorder:8000";
+    private const string BaseUrl = "http://recorder:8010";
 
     public RecorderClient(HttpClient httpClient, ILogger<RecorderClient> logger)
     {

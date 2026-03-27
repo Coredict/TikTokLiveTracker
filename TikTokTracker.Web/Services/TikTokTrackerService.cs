@@ -24,7 +24,6 @@ public class TikTokTrackerService : BackgroundService
 
     // Tracks active WebSocket gift listeners
     private readonly ConcurrentDictionary<string, TikTokLiveClient> _liveClients = new();
-    private DateTime _lastCleanupTime = DateTime.MinValue;
     
     // Batch processing buffer
     private readonly ConcurrentQueue<GiftTransaction> _giftBuffer = new();
@@ -127,13 +126,6 @@ public class TikTokTrackerService : BackgroundService
         // Fetch active recordings from the microservice
         var activeRecordings = await _recorderClient.GetActiveRecordingsAsync();
         
-        // Only cleanup once per hour to reduce SQL noise
-        if (DateTime.UtcNow - _lastCleanupTime > TimeSpan.FromHours(1))
-        {
-            await CleanupExpiredGiftsAsync(db, cancellationToken);
-            _lastCleanupTime = DateTime.UtcNow;
-        }
-
         // Clean up WebSocket clients for accounts no longer in DB
         var knownUsernames = accounts.Select(a => a.Username).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var user in _liveClients.Keys.Where(k => !knownUsernames.Contains(k)).ToList())
@@ -249,26 +241,6 @@ public class TikTokTrackerService : BackgroundService
             return true;
         }
         return false;
-    }
-
-    private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var expiry = DateTime.UtcNow.AddHours(-24);
-            var expiredCount = await db.Gifts
-                .Where(g => g.Timestamp < expiry)
-                .ExecuteDeleteAsync(cancellationToken);
-
-            if (expiredCount > 0)
-            {
-                _logger.LogInformation("Cleaned up {Count} expired gift transactions older than 24h.", expiredCount);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error cleaning up expired gifts.");
-        }
     }
 
     /// <summary>
