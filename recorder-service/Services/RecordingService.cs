@@ -1,5 +1,7 @@
 using CliWrap;
 using System.Collections.Concurrent;
+using System.Linq;
+using TikTokTracker.Recorder.Models;
 
 namespace TikTokTracker.Recorder.Services;
 
@@ -7,13 +9,13 @@ public interface IRecordingService
 {
     Task<bool> StartRecordingAsync(string username, string streamUrl);
     bool StopRecordingAsync(string username);
-    List<string> GetActiveRecordings();
+    List<ActiveRecordingInfo> GetActiveRecordings();
 }
 
 public class RecordingService : IRecordingService
 {
     private readonly ILogger<RecordingService> _logger;
-    private readonly ConcurrentDictionary<string, (CancellationTokenSource Cts, string Filename, string FilePath)> _activeRecordings = new();
+    private readonly ConcurrentDictionary<string, (CancellationTokenSource Cts, string Filename, string FilePath, DateTime StartedAt)> _activeRecordings = new();
     private readonly string _recordingsDir = "recordings";
     private readonly string _tempDir = "tmp";
 
@@ -88,7 +90,7 @@ public class RecordingService : IRecordingService
                 }
             });
 
-            _activeRecordings[username] = (cts, filename, filepath);
+            _activeRecordings[username] = (cts, filename, filepath, DateTime.Now);
             return true;
         }
         catch (Exception ex)
@@ -110,8 +112,10 @@ public class RecordingService : IRecordingService
         return false;
     }
 
-    public List<string> GetActiveRecordings()
+    public List<ActiveRecordingInfo> GetActiveRecordings()
     {
-        return _activeRecordings.Keys.OrderBy(k => k).ToList();
+        return _activeRecordings.Select(kvp => new ActiveRecordingInfo(kvp.Key, kvp.Value.StartedAt))
+            .OrderBy(r => r.username)
+            .ToList();
     }
 }

@@ -3,6 +3,7 @@ using TikTokTracker.Recorder.Models;
 using TikTokTracker.Recorder.Services;
 using CliWrap;
 using CliWrap.Buffered;
+using System.Linq;
 
 namespace TikTokTracker.Recorder.Controllers;
 
@@ -44,7 +45,7 @@ public class RecordingController : ControllerBase
     {
         username = username.Trim().Replace("@", "");
         
-        if (_recordingService.GetActiveRecordings().Contains(username, StringComparer.OrdinalIgnoreCase))
+        if (_recordingService.GetActiveRecordings().Any(r => r.username.Equals(username, StringComparison.OrdinalIgnoreCase)))
         {
             return Ok(new { status = "already_recording", username });
         }

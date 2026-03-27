@@ -123,29 +123,34 @@
             <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@RefreshAllRecordings" IsBusy="@_isRefreshing" Tooltip="Refresh recordings" />
         </RadzenStack>
 
-        <RadzenDataGrid Data="@_activeUsernames" TItem="string" Density="Density.Compact" AllowPaging="true" PageSize="5" Responsive="true" class="rz-border-radius-1">
+        <RadzenDataGrid Data="@_activeRecordings" TItem="ActiveRecordingInfo" Density="Density.Compact" AllowPaging="true" PageSize="5" Responsive="true" class="rz-border-radius-1">
             <EmptyTemplate>
                 <div class="rz-p-4 rz-text-align-center">
                     <RadzenText TextStyle="TextStyle.Body2" Text="No active recordings at the moment." />
                 </div>
             </EmptyTemplate>
             <Columns>
-                <RadzenDataGridColumn TItem="string" Title="Account">
-                    <Template Context="username">
+                <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="Account">
+                    <Template Context="info">
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
                             <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Danger" IsPill="true" />
-                            <strong>@("@" + username)</strong>
+                            <strong>@("@" + info.Username)</strong>
                         </RadzenStack>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="string" Title="Status" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
-                    <Template Context="username">
-                        <RadzenText TextStyle="TextStyle.Caption" Text="Recording in progress..." />
+                <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="Started At" Width="100px" HeaderCssClass="mobile-hide" CssClass="mobile-hide">
+                    <Template Context="info">
+                        <RadzenText TextStyle="TextStyle.Caption" Text="@info.Started_At.ToLocalTime().ToString("HH:mm:ss")" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="string" Title="Actions" Width="150px" TextAlign="TextAlign.Right">
-                    <Template Context="username">
-                        <RadzenButton Icon="stop_circle" Text="Stop" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@(args => StopRecording(username))" />
+                <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="Duration" Width="120px">
+                    <Template Context="info">
+                        <RadzenBadge Text="@FormatActiveDuration(info.Started_At)" BadgeStyle="BadgeStyle.Danger" Variant="Variant.Flat" IsPill="true" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ActiveRecordingInfo" Title="Actions" Width="100px" TextAlign="TextAlign.Right">
+                    <Template Context="info">
+                        <RadzenButton Icon="stop_circle" Text="Stop" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@(args => StopRecording(info.Username))" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -207,7 +212,7 @@ else
     private string statusMessage = "";
     private System.Threading.Timer? _timer;
     private List<VideoFileInfo> _files = new();
-    private List<string> _activeUsernames = new();
+    private List<ActiveRecordingInfo> _activeRecordings = new();
     private int _refreshTick = 0;
     private bool _disposed = false;
     private bool _isRefreshing = false;
@@ -225,8 +230,8 @@ else
     {
         if (firstRender && AdminSession.IsAdmin && !_disposed)
         {
-            // Reduced frequency from 1s to 3s to improve stability and reduce race conditions
-            _timer = new System.Threading.Timer(OnTimerCallback, null, 3000, 3000);
+            // Updated to 1s as requested by user to see real-time duration updates
+            _timer = new System.Threading.Timer(OnTimerCallback, null, 1000, 1000);
         }
         await Task.CompletedTask;
     }
@@ -250,12 +255,7 @@ else
 
                 await LoadAccounts();
                 
-                _refreshTick++;
-                if (_refreshTick >= 5)
-                {
-                    await RefreshAllRecordings();
-                    _refreshTick = 0;
-                }
+                await RefreshAllRecordings();
                 
                 if (!_disposed)
                 {
@@ -275,7 +275,7 @@ else
         try
         {
             _isRefreshing = true;
-            _activeUsernames = await RecorderClient.GetActiveRecordingsAsync();
+            _activeRecordings = await RecorderClient.GetActiveRecordingsAsync();
             _files = await RecorderClient.ListRecordingsAsync();
         }
         finally
@@ -390,6 +390,14 @@ else
         if (ts.TotalHours >= 1)
             return ts.ToString(@"hh\:mm\:ss");
         return ts.ToString(@"mm\:ss");
+    }
+
+    private string FormatActiveDuration(DateTime startedAt)
+    {
+        var duration = DateTime.Now - startedAt;
+        if (duration.TotalHours >= 1)
+            return duration.ToString(@"hh\:mm\:ss");
+        return duration.ToString(@"mm\:ss");
     }
 
     public void Dispose()
