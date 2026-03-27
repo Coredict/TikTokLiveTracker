@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSingleton<ITikTokUrlProvider, TikTokUrlProvider>();
 builder.Services.AddSingleton<IRecordingService, RecordingService>();
+builder.Services.AddHostedService<RecordingCleanupService>();
 builder.Services.AddControllers();
 
 builder.Services.AddHealthChecks()

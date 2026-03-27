@@ -73,18 +73,28 @@ public class RecordingService : IRecordingService
                 {
                     if (_activeRecordings.TryRemove(username, out var info))
                     {
-                        var finalPath = Path.Combine(_recordingsDir, info.Filename);
                         try
                         {
                             if (File.Exists(info.FilePath))
                             {
-                                File.Move(info.FilePath, finalPath, true);
-                                _logger.LogInformation("Moved completed recording for {Username} to {FinalPath}", username, finalPath);
+                                var fileInfo = new FileInfo(info.FilePath);
+                                // Check if file is at least 150KB (approx 153,600 bytes)
+                                if (fileInfo.Length < 150 * 1024)
+                                {
+                                    File.Delete(info.FilePath);
+                                    _logger.LogWarning("Discarding recording for {Username} - file too small ({Size} bytes), likely a failed stream connection.", username, fileInfo.Length);
+                                }
+                                else
+                                {
+                                    var finalPath = Path.Combine(_recordingsDir, info.Filename);
+                                    File.Move(info.FilePath, finalPath, true);
+                                    _logger.LogInformation("Moved completed recording for {Username} ({Size} bytes) to {FinalPath}", username, fileInfo.Length, finalPath);
+                                }
                             }
                         }
-                        catch (Exception moveEx)
+                        catch (Exception ex)
                         {
-                            _logger.LogError(moveEx, "Failed to move recording file from {TempPath} to {FinalPath}", info.FilePath, finalPath);
+                            _logger.LogError(ex, "Error finalizing recording for {Username}", username);
                         }
                     }
                 }
