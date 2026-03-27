@@ -93,7 +93,7 @@ public class TikTokTrackerService : BackgroundService
                 await PollAllAccountsAsync(stoppingToken);
 
                 // Periodic flush of gifts
-                if (!_giftBuffer.IsEmpty && (DateTime.UtcNow - _lastFlushTime > TimeSpan.FromMinutes(1)))
+                if (!_giftBuffer.IsEmpty && (DateTime.UtcNow - _lastFlushTime > TimeSpan.FromSeconds(15)))
                 {
                     await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
                     await FlushGiftsAsync(db, stoppingToken);
@@ -250,6 +250,21 @@ public class TikTokTrackerService : BackgroundService
             return true;
         }
         return false;
+    }
+
+    public async Task<List<DailyCoinEarning>> GetDailyCoinEarningsAsync(int? limit = 30)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var query = db.DailyCoinEarnings
+            .Include(e => e.Account)
+            .OrderByDescending(e => e.Date);
+            
+        if (limit.HasValue)
+        {
+            return await query.Take(limit.Value).ToListAsync();
+        }
+        
+        return await query.ToListAsync();
     }
 
     private async Task CleanupExpiredGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
@@ -465,6 +480,12 @@ public class TikTokTrackerService : BackgroundService
         }
     }
 
+    public virtual async Task ManualFlushAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await FlushGiftsAsync(db, ct);
+    }
+
     private async Task FlushGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         if (_giftBuffer.IsEmpty) return;
@@ -490,7 +511,7 @@ public class TikTokTrackerService : BackgroundService
             foreach (var total in accountTotals)
             {
                 var acc = await db.Accounts.FindAsync(new object[] { total.Id }, cancellationToken);
-                if (acc != null) acc.CurrentCoins += total.Total;
+                if (acc != null) acc.CoinsToday += total.Total;
             }
 
             await db.SaveChangesAsync(cancellationToken);

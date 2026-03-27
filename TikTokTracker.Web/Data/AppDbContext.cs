@@ -10,4 +10,5 @@ public class AppDbContext : DbContext
     public DbSet<TikTokAccount> Accounts { get; set; } = null!;
     public DbSet<GiftTransaction> Gifts { get; set; } = null!;
     public DbSet<GifterSummary> GifterSummaries { get; set; } = null!;
+    public DbSet<DailyCoinEarning> DailyCoinEarnings { get; set; } = null!;
 }

@@ -5,7 +5,8 @@ public class TikTokAccount
     public int Id { get; set; }
     public string Username { get; set; } = string.Empty;
     public bool IsOnline { get; set; }
-    public int CurrentCoins { get; set; }
+    public int CoinsToday { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int ViewerCount { get; set; }
     public string? ProfileImageUrl { get; set; }
     public bool AutoRecord { get; set; }

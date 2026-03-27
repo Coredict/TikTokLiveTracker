@@ -45,7 +45,7 @@ else
     {
         <RadzenContentContainer>
             <RadzenRow Gap="1rem" class="rz-mb-6">
-                @foreach (var account in accounts.OrderByDescending(a => a.IsOnline).ThenByDescending(a => a.CurrentCoins))
+                @foreach (var account in accounts.OrderByDescending(a => a.IsOnline).ThenByDescending(a => a.CoinsToday))
                 {
                     <RadzenColumn Size="12" SizeMD="6" SizeLG="4">
                         <RadzenCard class="rz-h-100" Style="position: relative;">
@@ -75,7 +75,7 @@ else
                                     <RadzenText TextStyle="TextStyle.Overline" Text="Coins Today" class="rz-display-block rz-mb-1" />
                                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.25rem">
                                         <RadzenIcon Icon="monetization_on" IconColor="var(--rz-warning)" />
-                                        <RadzenText TextStyle="TextStyle.H5" Text="@account.CurrentCoins.ToString("N0")" class="rz-m-0 rz-color-warning" />
+                                        <RadzenText TextStyle="TextStyle.H5" Text="@account.CoinsToday.ToString("N0")" class="rz-m-0 rz-color-warning" />
                                     </RadzenStack>
                                 </RadzenColumn>
                                 <RadzenColumn Size="6">
@@ -87,9 +87,12 @@ else
                                 </RadzenColumn>
                             </RadzenRow>
 
-                            <RadzenButton class="rz-mt-4 rz-w-100" Text="@(account.IsOnline ? "Watch Stream" : "View Profile")" 
-                                          ButtonStyle="@(account.IsOnline ? ButtonStyle.Danger : ButtonStyle.Light)"
-                                          Icon="open_in_new" Click="@(() => JSRuntime.InvokeVoidAsync("open", account.StreamUrl, "_blank"))" />
+                            <a href="@account.StreamUrl" target="_blank" 
+                               class="rz-button rz-button-md rz-variant-filled @(account.IsOnline ? "rz-danger" : "rz-light") rz-shade-default rz-mt-4 rz-w-100"
+                               style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <RadzenIcon Icon="open_in_new" />
+                                <span class="rz-button-text">@(account.IsOnline ? "Watch Stream" : "View Profile")</span>
+                            </a>
                         </RadzenCard>
                     </RadzenColumn>
                 }
