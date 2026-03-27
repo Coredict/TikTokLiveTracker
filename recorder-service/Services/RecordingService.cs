@@ -54,12 +54,27 @@ public class RecordingService : IRecordingService
             {
                 try
                 {
+                    var stderr = new System.Text.StringBuilder();
                     var result = await Cli.Wrap("ffmpeg")
-                        .WithArguments(new[] { "-i", streamUrl, "-c", "copy", "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-y", filepath })
+                        .WithArguments(new[] { 
+                            "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                            "-i", streamUrl, 
+                            "-c", "copy", 
+                            "-bsf:a", "aac_adtstoasc",
+                            "-f", "mp4", 
+                            "-movflags", "frag_keyframe+empty_moov+default_base_moof", 
+                            "-y", filepath 
+                        })
+                        .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stderr))
                         .WithValidation(CommandResultValidation.None)
                         .ExecuteAsync(cts.Token);
                     
                     _logger.LogInformation("ffmpeg process for {Username} finished with code {ExitCode}", username, result.ExitCode);
+                    if (result.ExitCode != 0)
+                    {
+                        var errorLog = stderr.ToString();
+                        _logger.LogWarning("ffmpeg for {Username} exited with errors: {Error}", username, errorLog);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -73,18 +88,27 @@ public class RecordingService : IRecordingService
                 {
                     if (_activeRecordings.TryRemove(username, out var info))
                     {
-                        var finalPath = Path.Combine(_recordingsDir, info.Filename);
                         try
                         {
                             if (File.Exists(info.FilePath))
                             {
-                                File.Move(info.FilePath, finalPath, true);
-                                _logger.LogInformation("Moved completed recording for {Username} to {FinalPath}", username, finalPath);
+                                var fileInfo = new FileInfo(info.FilePath);
+                                if (fileInfo.Length < 300 * 1024)
+                                {
+                                    File.Delete(info.FilePath);
+                                    _logger.LogWarning("Discarding recording for {Username} - file too small ({Size} bytes), likely a failed stream connection.", username, fileInfo.Length);
+                                }
+                                else
+                                {
+                                    var finalPath = Path.Combine(_recordingsDir, info.Filename);
+                                    File.Move(info.FilePath, finalPath, true);
+                                    _logger.LogInformation("Moved completed recording for {Username} ({Size} bytes) to {FinalPath}", username, fileInfo.Length, finalPath);
+                                }
                             }
                         }
-                        catch (Exception moveEx)
+                        catch (Exception ex)
                         {
-                            _logger.LogError(moveEx, "Failed to move recording file from {TempPath} to {FinalPath}", info.FilePath, finalPath);
+                            _logger.LogError(ex, "Error finalizing recording for {Username}", username);
                         }
                     }
                 }
@@ -114,8 +138,22 @@ public class RecordingService : IRecordingService
 
     public List<ActiveRecordingInfo> GetActiveRecordings()
     {
-        return _activeRecordings.Select(kvp => new ActiveRecordingInfo(kvp.Key, kvp.Value.StartedAt))
-            .OrderBy(r => r.username)
-            .ToList();
+        return _activeRecordings.Select(kvp => {
+            long size = 0;
+            try
+            {
+                if (File.Exists(kvp.Value.FilePath))
+                {
+                    size = new FileInfo(kvp.Value.FilePath).Length;
+                }
+            }
+            catch (Exception)
+            {
+                // Ignore errors reading file size
+            }
+            return new ActiveRecordingInfo(kvp.Key, kvp.Value.StartedAt, size);
+        })
+        .OrderBy(r => r.username)
+        .ToList();
     }
 }

@@ -88,8 +88,18 @@ public static class DatabaseInitializer
             CREATE INDEX IF NOT EXISTS ""IX_DailyCoinEarnings_TikTokAccountId"" ON ""DailyCoinEarnings"" (""TikTokAccountId"");
         ";
         await db.Database.ExecuteSqlRawAsync(dailyEarningsSql);
+        
+        // 6. SystemSettings Table
+        var systemSettingsSql = @"
+            CREATE TABLE IF NOT EXISTS ""SystemSettings"" (
+                ""Id"" SERIAL PRIMARY KEY,
+                ""Key"" TEXT NOT NULL UNIQUE,
+                ""Value"" TEXT NOT NULL
+            );
+        ";
+        await db.Database.ExecuteSqlRawAsync(systemSettingsSql);
 
-        // 6. Indices and Constraints
+        // 7. Indices and Constraints
         await ExecuteSqlIgnoreErrorAsync(db, @"DROP INDEX IF EXISTS ""IX_GifterSummaries_Account_Sender"";");
         await ExecuteSqlIgnoreErrorAsync(db, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GifterSummaries_Account_User"" ON ""GifterSummaries"" (""TikTokAccountId"", ""SenderUserId"");");
     }

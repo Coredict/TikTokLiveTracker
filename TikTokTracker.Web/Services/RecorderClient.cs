@@ -139,5 +139,5 @@ public class RecorderClient
 }
 
 
-public record ActiveRecordingInfo(string Username, DateTime Started_At);
+public record ActiveRecordingInfo(string Username, DateTime Started_At, long Size_Bytes);
 public record VideoFileInfo(string Name, long SizeBytes, double? DurationSeconds);

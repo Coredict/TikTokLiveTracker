@@ -1,0 +1,36 @@
+info: TikTokTracker.Recorder.Services.RecordingCleanupService[0]
+      Recording Cleanup Service is starting.
+info: TikTokTracker.Recorder.Services.RecordingCleanupService[0]
+      Scanning 0 files for short recordings...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:8001
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /app
+info: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      Fetching stream URL for mc.isti74 via yt-dlp
+warn: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      yt-dlp failed to get stream URL for mc.isti74: Deprecated Feature: Passing cookies as a header is a potential security risk; they will be scoped to the domain of the downloaded urls. Please consider loading cookies from a file or browser instead.
+      ERROR: [tiktok:live] mc.isti74: The channel is not currently live
+      
+info: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      Fetching stream URL for mc.isti74 via yt-dlp
+warn: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      yt-dlp failed to get stream URL for mc.isti74: Deprecated Feature: Passing cookies as a header is a potential security risk; they will be scoped to the domain of the downloaded urls. Please consider loading cookies from a file or browser instead.
+      ERROR: [tiktok:live] mc.isti74: The channel is not currently live
+      
+info: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      Fetching stream URL for mc.isti74 via yt-dlp
+warn: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      yt-dlp failed to get stream URL for mc.isti74: Deprecated Feature: Passing cookies as a header is a potential security risk; they will be scoped to the domain of the downloaded urls. Please consider loading cookies from a file or browser instead.
+      ERROR: [tiktok:live] mc.isti74: The channel is not currently live
+      
+info: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      Fetching stream URL for mc.isti74 via yt-dlp
+warn: TikTokTracker.Recorder.Services.TikTokUrlProvider[0]
+      yt-dlp failed to get stream URL for mc.isti74: Deprecated Feature: Passing cookies as a header is a potential security risk; they will be scoped to the domain of the downloaded urls. Please consider loading cookies from a file or browser instead.
+      ERROR: [tiktok:live] mc.isti74: The channel is not currently live
+      
