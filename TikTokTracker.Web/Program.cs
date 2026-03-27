@@ -34,10 +34,13 @@ builder.Services.AddScoped<TikTokTracker.Web.Services.AdminSessionService>();
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo("/app/keys"));
 
+builder.Services.AddSingleton<ISystemClock, SystemClock>();
+builder.Services.AddSingleton<IFileSystem, LocalFileSystem>();
 builder.Services.AddSingleton<TikTokTrackerService>();
 builder.Services.AddSingleton<RecorderClient>();
 builder.Services.AddHostedService<TikTokTrackerService>(sp => sp.GetRequiredService<TikTokTrackerService>());
-builder.Services.AddHostedService<MidnightResetService>();
+builder.Services.AddSingleton<MidnightResetService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MidnightResetService>());
 
 var app = builder.Build();
 
