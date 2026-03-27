@@ -41,6 +41,7 @@ builder.Services.AddSingleton<RecorderClient>();
 builder.Services.AddHostedService<TikTokTrackerService>(sp => sp.GetRequiredService<TikTokTrackerService>());
 builder.Services.AddSingleton<MidnightResetService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MidnightResetService>());
+builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
 
 var app = builder.Build();
 
@@ -66,6 +67,12 @@ app.MapGet("/api/recordings/{filename}", async (string filename, RecorderClient 
     var stream = await recorder.GetDownloadStreamAsync(filename);
     if (stream == null) return Results.NotFound();
     return Results.Stream(stream, "video/mp4", filename);
+});
+
+app.MapGet("/api/config/tiktok-session-id", async (ISystemSettingsService settingsService) =>
+{
+    var sessionId = await settingsService.GetTikTokSessionIdAsync();
+    return Results.Ok(new { sessionId });
 });
 
 app.Run();

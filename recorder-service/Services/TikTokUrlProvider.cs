@@ -12,12 +12,53 @@ public interface ITikTokUrlProvider
 public class TikTokUrlProvider : ITikTokUrlProvider
 {
     private readonly ILogger<TikTokUrlProvider> _logger;
-    private readonly string _sessionId;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _configuration;
+    private readonly string _localSessionId;
 
-    public TikTokUrlProvider(ILogger<TikTokUrlProvider> logger, IConfiguration configuration)
+    public TikTokUrlProvider(ILogger<TikTokUrlProvider> logger, IConfiguration configuration, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
-        _sessionId = configuration["TIKTOK_SESSION_ID"] ?? "";
+        _configuration = configuration;
+        _httpClientFactory = httpClientFactory;
+        _localSessionId = configuration["TIKTOK_SESSION_ID"] ?? "";
+    }
+
+    private async Task<string> GetActiveSessionIdAsync()
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+            var baseUrl = _configuration["WEB_APP_URL"] ?? "http://app:8080";
+            
+            _logger.LogInformation("Attempting to fetch session ID from {Url}", $"{baseUrl}/api/config/tiktok-session-id");
+            var response = await client.GetAsync($"{baseUrl}/api/config/tiktok-session-id");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(content);
+                if (doc.RootElement.TryGetProperty("sessionId", out var sessionIdProp))
+                {
+                    var sessionId = sessionIdProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        _logger.LogInformation("Successfully fetched session ID from Web API.");
+                        return sessionId;
+                    }
+                }
+            }
+            
+            _logger.LogWarning("Web API returned unsuccessful status code: {Status}", response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to fetch session ID from Web API: {Message}", ex.Message);
+        }
+
+        _logger.LogInformation("Using local fallback session ID.");
+        return _localSessionId;
     }
 
     public async Task<string?> GetStreamUrlAsync(string username)
@@ -33,12 +74,14 @@ public class TikTokUrlProvider : ITikTokUrlProvider
                 url 
             };
             
-            if (!string.IsNullOrEmpty(_sessionId))
+            var activeSessionId = await GetActiveSessionIdAsync();
+            
+            if (!string.IsNullOrEmpty(activeSessionId))
             {
                 // Create a temporary cookie file in Netscape format
                 cookieFile = Path.Combine(Path.GetTempPath(), $"tiktok_cookies_{Guid.NewGuid()}.txt");
                 var cookieContent = "# Netscape HTTP Cookie File\n" +
-                                   $".tiktok.com\tTRUE\t/\tTRUE\t0\tsessionid\t{_sessionId}\n";
+                                   $".tiktok.com\tTRUE\t/\tTRUE\t0\tsessionid\t{activeSessionId}\n";
                 await File.WriteAllTextAsync(cookieFile, cookieContent);
                 
                 arguments.Add("--cookies");

@@ -11,4 +11,5 @@ public class AppDbContext : DbContext
     public DbSet<GiftTransaction> Gifts { get; set; } = null!;
     public DbSet<GifterSummary> GifterSummaries { get; set; } = null!;
     public DbSet<DailyCoinEarning> DailyCoinEarnings { get; set; } = null!;
+    public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
 }

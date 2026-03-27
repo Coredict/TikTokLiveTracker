@@ -22,6 +22,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=tiktoktracker;Username=postgres;Password=postgres
       - Recorder__BaseUrl=http://recorder:8001
+      - TIKTOK_SESSION_ID=e4fcc9a348f1427818b6cabe40aef5a9
     ports:
       - "5000:8080"
     depends_on:

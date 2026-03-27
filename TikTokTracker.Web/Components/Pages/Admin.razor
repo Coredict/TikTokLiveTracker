@@ -12,6 +12,7 @@
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
 @inject RecorderClient RecorderClient
+@inject ISystemSettingsService SettingsService
 @implements IDisposable
 
 <PageTitle>Admin Panel</PageTitle>
@@ -80,6 +81,27 @@
                 @statusMessage
             </RadzenAlert>
         }
+    </RadzenCard>
+
+    <RadzenCard class="rz-mb-4">
+        <RadzenText TextStyle="TextStyle.H6" Text="TikTok Settings" class="rz-mb-3" />
+        <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Wrap="FlexWrap.Wrap">
+                <RadzenText TextStyle="TextStyle.Body2" Text="Current Session ID:" class="rz-m-0" Style="min-width: 150px;" />
+                <RadzenText TextStyle="TextStyle.Body1" class="rz-m-0">
+                    <code>@(string.IsNullOrEmpty(currentSessionId) ? "Not Set" : currentSessionId)</code>
+                </RadzenText>
+                @if (isSessionIdFromConfig)
+                {
+                    <RadzenBadge Text="From Config (Default)" BadgeStyle="BadgeStyle.Info" IsPill="true" />
+                }
+            </RadzenStack>
+            
+            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="1rem" class="rz-flex-wrap add-account-stack">
+                <input @bind="newSessionId" placeholder="New TikTok Session ID" class="rz-textbox rz-flex-grow-1 rz-w-xs-100 add-account-input" />
+                <RadzenButton Text="Update" ButtonStyle="ButtonStyle.Primary" Click="@UpdateSessionId" class="rz-w-xs-100" />
+            </RadzenStack>
+        </RadzenStack>
     </RadzenCard>
 
     <RadzenDataGrid Data="@accounts" TItem="TikTokAccount" AllowPaging="true" PageSize="10" Density="Density.Compact" Responsive="true" class="rz-border-radius-1">
@@ -232,6 +254,9 @@ else
     private int _refreshTick = 0;
     private bool _disposed = false;
     private bool _isRefreshing = false;
+    private string currentSessionId = "";
+    private string newSessionId = "";
+    private bool isSessionIdFromConfig = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -239,6 +264,7 @@ else
         {
             await LoadAccounts();
             await RefreshAllRecordings();
+            await LoadSettings();
         }
     }
 
@@ -360,6 +386,25 @@ else
         {
             await LoadAccounts();
             statusMessage = $"@{account.Username} removed.";
+        }
+    }
+
+    private async Task LoadSettings()
+    {
+        currentSessionId = await SettingsService.GetTikTokSessionIdAsync();
+        // Check if it's the fallback or DB value
+        await using var db = await DbFactory.CreateDbContextAsync();
+        isSessionIdFromConfig = !await db.SystemSettings.AnyAsync(s => s.Key == "TikTokSessionId");
+    }
+
+    private async Task UpdateSessionId()
+    {
+        if (!string.IsNullOrWhiteSpace(newSessionId))
+        {
+            await SettingsService.UpdateTikTokSessionIdAsync(newSessionId.Trim());
+            await LoadSettings();
+            newSessionId = "";
+            statusMessage = "TikTok Session ID updated successfully!";
         }
     }
 
