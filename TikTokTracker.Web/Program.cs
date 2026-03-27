@@ -58,7 +58,6 @@ using (var scope = app.Services.CreateScope())
             ""Username"" TEXT NOT NULL,
             ""ProfileImageUrl"" TEXT,
             ""IsOnline"" BOOLEAN NOT NULL,
-            ""ViewerCount"" INTEGER NOT NULL,
             ""CoinsToday"" INTEGER NOT NULL DEFAULT 0,
             ""AutoRecord"" BOOLEAN NOT NULL DEFAULT FALSE
         );
@@ -135,6 +134,9 @@ using (var scope = app.Services.CreateScope())
     try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Gifts"" ADD COLUMN IF NOT EXISTS ""SenderUserId"" TEXT NOT NULL DEFAULT '';"); } catch { }
     try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Gifts"" ADD COLUMN IF NOT EXISTS ""StreakId"" TEXT;"); } catch { }
     try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""GifterSummaries"" ADD COLUMN IF NOT EXISTS ""SenderUserId"" TEXT NOT NULL DEFAULT '';"); } catch { }
+    
+    // Remove ViewerCount column as it is now in-memory only
+    try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Accounts"" DROP COLUMN IF EXISTS ""ViewerCount"";"); } catch { }
 
     // Update unique index for summaries to use SenderUserId
     try {
