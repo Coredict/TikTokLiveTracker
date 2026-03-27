@@ -15,4 +15,5 @@ public class TikTokAccount
     public bool IsRecording { get; set; }
     
     public string StreamUrl => $"https://www.tiktok.com/@{Username}/live";
+    public string ProfileUrl => $"https://www.tiktok.com/@{Username}";
 }
