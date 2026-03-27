@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
+using System.Linq;
 using TikTokLiveSharp.Client;
 using TikTokTracker.Web.Data;
 using TikTokTracker.Web.Models;
@@ -163,7 +164,7 @@ public class TikTokTrackerService : BackgroundService
             }
 
             // Set recording status (not persisted to DB)
-            account.IsRecording = activeRecordings.Contains(account.Username, StringComparer.OrdinalIgnoreCase);
+            account.IsRecording = activeRecordings.Any(r => r.Username.Equals(account.Username, StringComparison.OrdinalIgnoreCase));
 
             // New: Trigger recording if AutoRecord is enabled and account is live
             if (account.AutoRecord && isLive && !account.IsRecording)

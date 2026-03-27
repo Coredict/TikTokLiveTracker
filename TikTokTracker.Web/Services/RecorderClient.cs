@@ -61,7 +61,7 @@ public class RecorderClient
         }
     }
 
-    public async Task<List<string>> GetActiveRecordingsAsync()
+    public async Task<List<ActiveRecordingInfo>> GetActiveRecordingsAsync()
     {
         try
         {
@@ -71,14 +71,14 @@ public class RecorderClient
                 var body = await response.Content.ReadAsStringAsync();
                 var result = JsonSerializer.Deserialize<ActiveRecordingsResponse>(body, 
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return result?.ActiveRecordings ?? new List<string>();
+                return result?.ActiveRecordings ?? new List<ActiveRecordingInfo>();
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching active recordings");
         }
-        return new List<string>();
+        return new List<ActiveRecordingInfo>();
     }
 
     public async Task<List<VideoFileInfo>> ListRecordingsAsync()
@@ -134,8 +134,10 @@ public class RecorderClient
 
     public string GetDownloadUrl(string filename) => $"/api/recordings/{filename}";
 
-    private class ActiveRecordingsResponse { [JsonPropertyName("active_recordings")] public List<string> ActiveRecordings { get; set; } = new(); }
+    private class ActiveRecordingsResponse { [JsonPropertyName("active_recordings")] public List<ActiveRecordingInfo> ActiveRecordings { get; set; } = new(); }
     private class FilesResponse { public List<VideoFileInfo> Files { get; set; } = new(); }
 }
 
+
+public record ActiveRecordingInfo(string Username, DateTime Started_At);
 public record VideoFileInfo(string Name, long SizeBytes, double? DurationSeconds);
