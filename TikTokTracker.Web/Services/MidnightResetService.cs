@@ -9,25 +9,25 @@ public class MidnightResetService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<MidnightResetService> _logger;
     private readonly ISystemClock _systemClock;
-    private readonly IFileSystem _fileSystem;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+
+    private const string LastResetDateKey = "LastResetDate";
 
     public MidnightResetService(
-        IServiceProvider serviceProvider, 
+        IServiceProvider serviceProvider,
         ILogger<MidnightResetService> logger,
         ISystemClock systemClock,
-        IFileSystem fileSystem)
+        IDbContextFactory<AppDbContext> dbFactory)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _systemClock = systemClock;
-        _fileSystem = fileSystem;
+        _dbFactory = dbFactory;
     }
-
-    private readonly string _lastResetFilePath = Path.Combine(AppContext.BaseDirectory, "last_reset.txt");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Midnight Reset Service is starting with 1-second polling.");
+        _logger.LogInformation("Midnight Reset Service is starting.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -44,12 +44,18 @@ public class MidnightResetService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in Midnight Reset polling loop.");
+                _logger.LogError(ex, "Error in Midnight Reset loop.");
             }
 
             try
             {
-                await Task.Delay(1000, stoppingToken);
+                // Sleep until just after the next midnight rather than polling every second.
+                // A small 5-second buffer prevents waking up a hair early due to timer drift.
+                var now = _systemClock.Now;
+                var nextMidnight = now.Date.AddDays(1);
+                var delay = nextMidnight - now + TimeSpan.FromSeconds(5);
+                _logger.LogDebug("Next midnight reset check in {Delay:hh\\:mm\\:ss}.", delay);
+                await Task.Delay(delay, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -60,30 +66,40 @@ public class MidnightResetService : BackgroundService
 
     private async Task<DateTime> GetLastResetDateAsync()
     {
-        if (_fileSystem.Exists(_lastResetFilePath))
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var setting = await db.SystemSettings.FirstOrDefaultAsync(s => s.Key == LastResetDateKey);
+
+        if (setting != null && DateTime.TryParse(setting.Value, out var lastReset))
         {
-            var content = await _fileSystem.ReadAllTextAsync(_lastResetFilePath);
-            if (DateTime.TryParse(content, out var lastReset))
-            {
-                return lastReset.Date;
-            }
+            return lastReset.Date;
         }
-        
-        // If file doesn't exist, assume today so we don't trigger a massive reset on first run
-        // unless there are coins, but PerformResetAsync handles accountability.
+
+        // No record yet — assume today so we don't trigger a reset on first run
         return _systemClock.Today;
     }
 
     private async Task SaveLastResetDateAsync(DateTime date)
     {
-        await _fileSystem.WriteAllTextAsync(_lastResetFilePath, date.ToString("yyyy-MM-dd"));
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var setting = await db.SystemSettings.FirstOrDefaultAsync(s => s.Key == LastResetDateKey);
+
+        if (setting == null)
+        {
+            db.SystemSettings.Add(new SystemSetting { Key = LastResetDateKey, Value = date.ToString("yyyy-MM-dd") });
+        }
+        else
+        {
+            setting.Value = date.ToString("yyyy-MM-dd");
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private async Task PerformResetAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting midnight reset and coin archival.");
 
-        // Sync: Trigger a flush in TikTokTrackerService to ensure all buffered gifts are persisted
+        // Flush any buffered gifts before archiving so today's totals are accurate
         try
         {
             var tracker = _serviceProvider.GetService<TikTokTrackerService>();
@@ -97,10 +113,8 @@ public class MidnightResetService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to trigger manual flush before midnight reset. Some coins might be misattributed to the next day.");
         }
-        
-        using var scope = _serviceProvider.CreateScope();
-        var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-        using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
 
         var archivalDate = _systemClock.Today.AddDays(-1);
         var allAccounts = await db.Accounts.ToListAsync(cancellationToken);
@@ -110,7 +124,7 @@ public class MidnightResetService : BackgroundService
             foreach (var account in allAccounts)
             {
                 _logger.LogInformation("Archiving {Coins} coins for @{Username}", account.CoinsToday, account.Username);
-                
+
                 db.DailyCoinEarnings.Add(new DailyCoinEarning
                 {
                     TikTokAccountId = account.Id,
@@ -125,8 +139,7 @@ public class MidnightResetService : BackgroundService
             {
                 await db.SaveChangesAsync(cancellationToken);
                 _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", allAccounts.Count);
-                
-                // Save reset date after successful DB update
+
                 await SaveLastResetDateAsync(_systemClock.Today);
             }
             catch (Exception ex)
@@ -137,7 +150,6 @@ public class MidnightResetService : BackgroundService
         else
         {
             _logger.LogInformation("No accounts found to archive.");
-            // Even if no accounts, mark the day as reset so we don't keep checking on startup
             await SaveLastResetDateAsync(_systemClock.Today);
         }
     }
