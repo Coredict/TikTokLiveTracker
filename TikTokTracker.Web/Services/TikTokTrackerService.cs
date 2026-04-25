@@ -149,7 +149,7 @@ public class TikTokTrackerService : BackgroundService
             if (isLive && !_liveClients.ContainsKey(account.Username))
             {
                 // Account just went live – connect WebSocket to track gifts
-                StartGiftTracking(account);
+                StartGiftTracking(account, cancellationToken);
             }
             else if (!isLive && _liveClients.TryRemove(account.Username, out var client))
             {
@@ -353,7 +353,7 @@ public class TikTokTrackerService : BackgroundService
         }
     }
 
-    private void StartGiftTracking(TikTokAccount account)
+    private void StartGiftTracking(TikTokAccount account, CancellationToken stoppingToken)
     {
         var username = account.Username;
         var accountId = account.Id;
@@ -366,7 +366,7 @@ public class TikTokTrackerService : BackgroundService
                 var diamondCost = e.Gift.DiamondCost > 0 ? e.Gift.DiamondCost : 1;
                 var currentAmount = e.Amount > 0 ? (int)e.Amount : 1;
                 var streakId = Guid.NewGuid().ToString();
-                
+
                 // Record initial gift for both UI and DB
                 var uiTransaction = RecordGift(accountId, (int)currentAmount, e.Gift.Name, diamondCost, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName, streakId, true);
 
@@ -376,7 +376,7 @@ public class TikTokTrackerService : BackgroundService
                     {
                         // Update UI transaction (fix name if resolved, update amount)
                         UpdateUiGift(uiTransaction, (int)newAmount, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName);
-                        
+
                         // Record delta for DB accounting (silent, don't add to UI feed)
                         RecordGift(accountId, (int)change, e.Gift.Name, diamondCost, e.Sender.IdString, e.Sender.UniqueId, e.Sender.NickName, streakId, false);
                     }
@@ -384,17 +384,29 @@ public class TikTokTrackerService : BackgroundService
             }
         };
 
-        _liveClients.TryAdd(username, client);
+        // TryAdd is the definitive guard — if another racing call already added this username, bail out
+        if (!_liveClients.TryAdd(username, client))
+        {
+            _logger.LogDebug("Gift tracking already active for @{Username}, skipping duplicate start.", username);
+            return;
+        }
 
         Task.Run(async () =>
         {
             try
             {
-                await client.RunAsync(new CancellationToken());
+                await client.RunAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Gift tracking stopped for @{Username} (app shutdown).", username);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Gift tracking WebSocket disconnected for @{Username}", username);
+            }
+            finally
+            {
                 _liveClients.TryRemove(username, out _);
             }
         });

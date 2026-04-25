@@ -19,11 +19,6 @@ public class RecordingController : ControllerBase
     {
         _recordingService = recordingService;
         _urlProvider = urlProvider;
-
-        if (!Directory.Exists(_recordingsDir))
-        {
-            Directory.CreateDirectory(_recordingsDir);
-        }
     }
 
     [HttpGet]
