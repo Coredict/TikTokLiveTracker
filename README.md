@@ -35,7 +35,7 @@ If you want improved access to age-restricted streams, set `TIKTOK_SESSION_ID` f
 ### Run with Docker
 
 ```bash
-git clone https://github.com/Coredict/TikTokTracker.git
+git clone https://github.com/Coredict/TikTokLiveTracker.git
 cd TikTokTracker
 docker compose up --build
 ```
