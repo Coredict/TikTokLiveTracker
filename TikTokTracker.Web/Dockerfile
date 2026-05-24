@@ -1,7 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["TikTokTracker.Web/TikTokTracker.Web.csproj", "TikTokTracker.Web/"]
-RUN dotnet restore "TikTokTracker.Web/TikTokTracker.Web.csproj"
+COPY ["TikTokTracker.Tests/TikTokTracker.Tests.csproj", "TikTokTracker.Tests/"]
+RUN dotnet restore "TikTokTracker.Web/TikTokTracker.Web.csproj" && \
+    dotnet restore "TikTokTracker.Tests/TikTokTracker.Tests.csproj"
 COPY . .
 WORKDIR "/src/TikTokTracker.Web"
 RUN dotnet build "TikTokTracker.Web.csproj" -c Release -o /app/build

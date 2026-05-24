@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddSingleton<ITikTokUrlProvider, TikTokUrlProvider>();
+builder.Services.AddSingleton<IFfmpegRunner, FfmpegRunner>();
 builder.Services.AddSingleton<IRecordingService, RecordingService>();
 builder.Services.AddHostedService<RecordingCleanupService>();
 builder.Services.AddControllers();
@@ -61,3 +62,6 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 });
 
 app.Run("http://0.0.0.0:8001");
+
+// Make the auto-generated Program class accessible to integration tests
+public partial class Program { }

@@ -1,4 +1,3 @@
-using CliWrap;
 using System.Collections.Concurrent;
 using System.Linq;
 using TikTokTracker.Recorder.Models;
@@ -15,13 +14,15 @@ public interface IRecordingService
 public class RecordingService : IRecordingService
 {
     private readonly ILogger<RecordingService> _logger;
+    private readonly IFfmpegRunner _ffmpegRunner;
     private readonly ConcurrentDictionary<string, (CancellationTokenSource Cts, string Filename, string FilePath, DateTime StartedAt)> _activeRecordings = new();
     private readonly string _recordingsDir = "recordings";
     private readonly string _tempDir = "tmp";
 
-    public RecordingService(ILogger<RecordingService> logger)
+    public RecordingService(ILogger<RecordingService> logger, IFfmpegRunner ffmpegRunner)
     {
         _logger = logger;
+        _ffmpegRunner = ffmpegRunner;
         if (!Directory.Exists(_recordingsDir))
         {
             Directory.CreateDirectory(_recordingsDir);
@@ -49,31 +50,17 @@ public class RecordingService : IRecordingService
         try
         {
             var cts = new CancellationTokenSource();
-            
+
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var stderr = new System.Text.StringBuilder();
-                    var result = await Cli.Wrap("ffmpeg")
-                        .WithArguments(new[] { 
-                            "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                            "-i", streamUrl, 
-                            "-c", "copy", 
-                            "-bsf:a", "aac_adtstoasc",
-                            "-f", "mp4", 
-                            "-movflags", "frag_keyframe+empty_moov+default_base_moof", 
-                            "-y", filepath 
-                        })
-                        .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stderr))
-                        .WithValidation(CommandResultValidation.None)
-                        .ExecuteAsync(cts.Token);
-                    
-                    _logger.LogInformation("ffmpeg process for {Username} finished with code {ExitCode}", username, result.ExitCode);
-                    if (result.ExitCode != 0)
+                    var (exitCode, stdErr) = await _ffmpegRunner.RunAsync(streamUrl, filepath, cts.Token);
+
+                    _logger.LogInformation("ffmpeg process for {Username} finished with code {ExitCode}", username, exitCode);
+                    if (exitCode != 0)
                     {
-                        var errorLog = stderr.ToString();
-                        _logger.LogWarning("ffmpeg for {Username} exited with errors: {Error}", username, errorLog);
+                        _logger.LogWarning("ffmpeg for {Username} exited with errors: {Error}", username, stdErr);
                     }
                 }
                 catch (OperationCanceledException)

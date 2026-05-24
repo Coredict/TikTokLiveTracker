@@ -152,6 +152,9 @@ public class MidnightResetService : BackgroundService
                     _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", allAccounts.Count);
 
                     await SaveLastResetDateAsync(_systemClock.Today);
+
+                    // Signal the tracker to refresh its cached accounts immediately
+                    tracker?.RefreshAccountCache();
                 }
                 catch (Exception ex)
                 {
@@ -163,9 +166,6 @@ public class MidnightResetService : BackgroundService
                 _logger.LogInformation("No accounts found to archive.");
                 await SaveLastResetDateAsync(_systemClock.Today);
             }
-
-            // Signal the tracker to refresh its cached accounts immediately
-            tracker?.RefreshAccountCache();
         }
         finally
         {

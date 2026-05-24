@@ -276,7 +276,7 @@
 
         UpdateChartData();
         UpdateSummaryStats();
-        UpdateAccountEarnings();
+        await UpdateAccountEarningsAsync();
     }
 
     // ── Chart ──
@@ -385,11 +385,17 @@
 
     // ── Per-account earnings ──
 
-    private void UpdateAccountEarnings()
+    private async Task UpdateAccountEarningsAsync()
     {
         if (accounts == null) return;
 
-        var summaries = TrackerService.CachedTopGifters;
+        // Query DB for the #1 gifter per account so we're not limited to the cached top 50
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var topGifterByAccount = await db.GifterSummaries
+            .AsNoTracking()
+            .GroupBy(s => s.TikTokAccountId)
+            .Select(g => g.OrderByDescending(s => s.TotalDiamonds).First())
+            .ToListAsync();
 
         accountEarnings = accounts.Select(a =>
         {
@@ -397,10 +403,8 @@
                 .Where(e => e.TikTokAccountId == a.Id)
                 .Sum(e => e.Coins) ?? 0;
 
-            var topGifter = summaries
-                .Where(s => s.TikTokAccountId == a.Id)
-                .OrderByDescending(s => s.TotalDiamonds)
-                .FirstOrDefault();
+            var topGifter = topGifterByAccount
+                .FirstOrDefault(s => s.TikTokAccountId == a.Id);
 
             return new AccountEarningRow
             {
