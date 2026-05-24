@@ -32,9 +32,35 @@ public class TikTokTrackerService : BackgroundService
     private DateTime _lastFlushTime = DateTime.UtcNow;
     private const int MaxBufferSize = 500;
 
+    // Coordinates flush and midnight-reset so they never update CoinsToday concurrently
+    private readonly SemaphoreSlim _flushLock = new(1, 1);
+
     public IReadOnlyList<TikTokAccount> CachedAccounts { get { lock(_cacheLock) return _cachedAccounts.ToList(); } }
     public IReadOnlyList<GiftTransaction> CachedRecentGifts { get { lock(_cacheLock) return _cachedRecentGifts.ToList(); } }
     public IReadOnlyList<GifterSummary> CachedTopGifters { get { lock(_cacheLock) return _cachedTopGifters.ToList(); } }
+
+    /// <summary>
+    /// Called by MidnightResetService after archiving coins to force the cache to reload
+    /// from DB immediately, so the UI sees CoinsToday = 0 right away.
+    /// </summary>
+    public void RefreshAccountCache()
+    {
+        try
+        {
+            using var db = _dbFactory.CreateDbContext();
+            var accounts = db.Accounts.OrderBy(a => a.Username).ToList();
+            lock (_cacheLock)
+            {
+                _cachedAccounts.Clear();
+                _cachedAccounts.AddRange(accounts);
+            }
+            _logger.LogInformation("Account cache force-refreshed from DB.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to force-refresh account cache.");
+        }
+    }
 
     public TikTokTrackerService(
         IServiceProvider serviceProvider,
@@ -95,8 +121,7 @@ public class TikTokTrackerService : BackgroundService
                 // Periodic flush of gifts
                 if (!_giftBuffer.IsEmpty && (DateTime.UtcNow - _lastFlushTime > TimeSpan.FromSeconds(15)))
                 {
-                    await using var db = await _dbFactory.CreateDbContextAsync(stoppingToken);
-                    await FlushGiftsAsync(db, stoppingToken);
+                    await ManualFlushAsync(stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -465,8 +490,7 @@ public class TikTokTrackerService : BackgroundService
         if (_giftBuffer.Count >= MaxBufferSize)
         {
             _ = Task.Run(async () => {
-                await using var db = await _dbFactory.CreateDbContextAsync();
-                await FlushGiftsAsync(db, CancellationToken.None);
+                await ManualFlushAsync(CancellationToken.None);
             });
         }
         
@@ -492,13 +516,53 @@ public class TikTokTrackerService : BackgroundService
         }
     }
 
-    public virtual async Task ManualFlushAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Flushes buffered gifts and holds the flush lock until the returned IDisposable is disposed.
+    /// The midnight reset calls this so no concurrent flush can race with the CoinsToday = 0 write.
+    /// </summary>
+    public virtual async Task<IDisposable> FlushAndHoldLockAsync(CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        await FlushGiftsAsync(db, ct);
+        await _flushLock.WaitAsync(ct);
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            await FlushGiftsInternalAsync(db, ct);
+        }
+        catch
+        {
+            _flushLock.Release();
+            throw;
+        }
+        // Lock stays held — caller disposes to release
+        return new LockReleaser(_flushLock);
     }
 
-    private async Task FlushGiftsAsync(AppDbContext db, CancellationToken cancellationToken)
+    public virtual async Task ManualFlushAsync(CancellationToken ct = default)
+    {
+        await _flushLock.WaitAsync(ct);
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            await FlushGiftsInternalAsync(db, ct);
+        }
+        finally
+        {
+            _flushLock.Release();
+        }
+    }
+
+    private sealed class LockReleaser : IDisposable
+    {
+        private SemaphoreSlim? _semaphore;
+        public LockReleaser(SemaphoreSlim semaphore) => _semaphore = semaphore;
+        public void Dispose()
+        {
+            _semaphore?.Release();
+            _semaphore = null;
+        }
+    }
+
+    private async Task FlushGiftsInternalAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         if (_giftBuffer.IsEmpty) return;
 
@@ -571,11 +635,23 @@ public class TikTokTrackerService : BackgroundService
                 .OrderByDescending(g => g.TotalDiamonds)
                 .Take(50)
                 .ToListAsync(cancellationToken);
-            
+
+            // Sync CoinsToday back to the cached accounts so the UI is up to date
+            var freshAccounts = await db.Accounts.OrderBy(a => a.Username).ToListAsync(cancellationToken);
+
             lock (_cacheLock)
             {
                 _cachedTopGifters.Clear();
                 _cachedTopGifters.AddRange(topGifters);
+
+                foreach (var fresh in freshAccounts)
+                {
+                    var cached = _cachedAccounts.FirstOrDefault(a => a.Id == fresh.Id);
+                    if (cached != null)
+                    {
+                        cached.CoinsToday = fresh.CoinsToday;
+                    }
+                }
             }
         }
         catch (Exception ex)

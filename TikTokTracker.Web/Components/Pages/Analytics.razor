@@ -6,7 +6,9 @@
 @using TikTokTracker.Web.Services
 @using Radzen
 @using Radzen.Blazor
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject TikTokTrackerService TrackerService
+@implements IDisposable
 
 <PageTitle>Analytics - TikTok Live Tracker</PageTitle>
 
@@ -15,14 +17,63 @@
     <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H1" class="rz-m-0" Text="Earnings Analytics" />
 </RadzenStack>
 
-<RadzenRow Gap="2rem">
+@* ── Summary stat cards ── *@
+<RadzenRow Gap="1rem" class="rz-mb-6">
+    <RadzenColumn Size="6" SizeMD="3">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.Overline" Text="Today" class="rz-display-block rz-mb-1" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.25rem">
+                <RadzenIcon Icon="today" IconColor="var(--rz-success)" />
+                <RadzenText TextStyle="TextStyle.H5" Text="@coinsToday.ToString("N0")" class="rz-m-0 rz-color-success" />
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenColumn>
+    <RadzenColumn Size="6" SizeMD="3">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.Overline" Text="All Time" class="rz-display-block rz-mb-1" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.25rem">
+                <RadzenIcon Icon="monetization_on" IconColor="var(--rz-warning)" />
+                <RadzenText TextStyle="TextStyle.H5" Text="@totalCoins.ToString("N0")" class="rz-m-0 rz-color-warning" />
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenColumn>
+    <RadzenColumn Size="6" SizeMD="3">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.Overline" Text="Daily Average" class="rz-display-block rz-mb-1" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.25rem">
+                <RadzenIcon Icon="trending_up" IconColor="var(--rz-info)" />
+                <RadzenText TextStyle="TextStyle.H5" Text="@dailyAvg.ToString("N0")" class="rz-m-0 rz-color-info" />
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenColumn>
+    <RadzenColumn Size="6" SizeMD="3">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.Overline" Text="Best Day" class="rz-display-block rz-mb-1" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.25rem">
+                <RadzenIcon Icon="star" IconColor="var(--rz-danger)" />
+                <RadzenText TextStyle="TextStyle.H5" Text="@bestDay.ToString("N0")" class="rz-m-0 rz-color-danger" />
+            </RadzenStack>
+            @if (!string.IsNullOrEmpty(bestDayLabel))
+            {
+                <RadzenText TextStyle="TextStyle.Caption" Text="@bestDayLabel" class="rz-display-block rz-mt-1" />
+            }
+        </RadzenCard>
+    </RadzenColumn>
+</RadzenRow>
+
+@* ── Daily earnings chart ── *@
+<RadzenRow Gap="2rem" class="rz-mb-6">
     <RadzenColumn Size="12">
         <RadzenCard>
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-4">
-                <RadzenText TextStyle="TextStyle.H5" Text="Daily Coin Earnings (Last 30 Days)" class="rz-m-0" />
-                <RadzenDropDown TValue="int?" Data="@accounts" TextProperty="Username" ValueProperty="Id" 
-                                Placeholder="All Accounts" Value="@selectedAccountId" Change="@OnAccountChanged" 
-                                AllowClear="true" Style="width: 250px;" />
+                <RadzenText TextStyle="TextStyle.H5" Text="Daily Coin Earnings" class="rz-m-0" />
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                    <RadzenDropDown TValue="int" Data="@dayRangeOptions" TextProperty="Label" ValueProperty="Days"
+                                    Value="@selectedDayRange" Change="@OnDayRangeChanged" Style="width: 140px;" />
+                    <RadzenDropDown TValue="int?" Data="@accounts" TextProperty="Username" ValueProperty="Id"
+                                    Placeholder="All Accounts" Value="@selectedAccountId" Change="@OnAccountChanged"
+                                    AllowClear="true" Style="width: 200px;" />
+                </RadzenStack>
             </RadzenStack>
 
             @if (chartData == null)
@@ -35,52 +86,218 @@
             else if (!chartData.Any())
             {
                 <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
-                    No historical data available yet. Data is archived daily at midnight.
+                    No earnings data yet. Coins are archived daily at midnight and today's live total is shown above.
                 </RadzenAlert>
             }
             else
             {
-                <RadzenChart>
-                    <RadzenColumnSeries Data="@chartData" CategoryProperty="DateStr" Title="Coins" ValueProperty="Coins" LineType="LineType.Dashed" />
+                <RadzenChart Style="height: 350px;">
+                    <RadzenColumnSeries Data="@chartData" CategoryProperty="DateStr" Title="Coins" ValueProperty="Coins" />
                     <RadzenCategoryAxis Padding="20">
                         <RadzenAxisTitle Text="Date" />
                     </RadzenCategoryAxis>
                     <RadzenValueAxis>
                         <RadzenGridLines Visible="true" />
-                        <RadzenAxisTitle Text="Coins Collected" />
+                        <RadzenAxisTitle Text="Coins" />
                     </RadzenValueAxis>
                     <RadzenChartTooltipOptions Shared="true" />
+                    <RadzenLegend Visible="false" />
                 </RadzenChart>
             }
         </RadzenCard>
     </RadzenColumn>
 </RadzenRow>
 
+@* ── Top gifters per account ── *@
+<RadzenRow Gap="2rem">
+    <RadzenColumn Size="12" SizeXL="6">
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" class="rz-mb-2">
+                <RadzenText TextStyle="TextStyle.H5" Text="Top Gifters (All Time)" class="rz-m-0" />
+            </RadzenStack>
+            <RadzenDropDown TValue="int?" Data="@accounts" TextProperty="Username" ValueProperty="Id"
+                            Placeholder="All Accounts" Value="@selectedGifterAccountId" Change="@OnGifterAccountChanged"
+                            AllowClear="true" class="rz-w-100 rz-mb-4" />
+
+            @if (gifterRows == null)
+            {
+                <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            }
+            else if (!gifterRows.Any())
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">No gifters yet.</RadzenAlert>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@gifterRows" TItem="GifterRow" AllowPaging="true" PageSize="10" Density="Density.Compact" class="rz-border-radius-1">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="#" Width="50px">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@row.Rank.ToString()" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="Gifter">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2"><strong>@row.Nickname</strong></RadzenText>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@("@" + row.Username)" class="rz-display-block" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="To" Width="120px">
+                            <Template Context="row">
+                                <RadzenBadge Text="@("@" + row.AccountUsername)" IsPill="true" BadgeStyle="BadgeStyle.Light" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="Diamonds" Width="110px" TextAlign="TextAlign.Right">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-warning" Style="font-weight: bold;">@row.TotalDiamonds.ToString("N0")</RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="Gifts" Width="80px" TextAlign="TextAlign.Right">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@row.TotalGifts.ToString("N0")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GifterRow" Title="Last Seen" Width="100px">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Caption" Text="@row.LastGift.ToLocalTime().ToString("MMM dd")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    </RadzenColumn>
+
+    @* ── Per-account earnings breakdown ── *@
+    <RadzenColumn Size="12" SizeXL="6">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.H5" Text="Earnings by Account" class="rz-m-0 rz-mb-4" />
+
+            @if (accountEarnings == null || !accountEarnings.Any())
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">No account data yet.</RadzenAlert>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@accountEarnings" TItem="AccountEarningRow" AllowPaging="false" Density="Density.Compact" class="rz-border-radius-1">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AccountEarningRow" Title="Account">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2"><strong>@("@" + row.Username)</strong></RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AccountEarningRow" Title="Today" Width="110px" TextAlign="TextAlign.Right">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-success" Style="font-weight: bold;">@row.Today.ToString("N0")</RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AccountEarningRow" Title="All Time" Width="120px" TextAlign="TextAlign.Right">
+                            <Template Context="row">
+                                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-warning" Style="font-weight: bold;">@row.AllTime.ToString("N0")</RadzenText>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AccountEarningRow" Title="Top Gifter">
+                            <Template Context="row">
+                                @if (!string.IsNullOrEmpty(row.TopGifterName))
+                                {
+                                    <RadzenText TextStyle="TextStyle.Body2">@row.TopGifterName</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Caption" Text="@($"{row.TopGifterDiamonds:N0} diamonds")" class="rz-display-block" />
+                                }
+                                else
+                                {
+                                    <RadzenText TextStyle="TextStyle.Caption" Text="—" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    </RadzenColumn>
+</RadzenRow>
+
 @code {
+    // ── Data ──
     private List<TikTokAccount>? accounts;
     private List<DailyCoinEarning>? allEarnings;
     private List<ChartDataItem>? chartData;
+    private List<GifterRow>? gifterRows;
+    private List<AccountEarningRow>? accountEarnings;
+
+    // ── Filters ──
     private int? selectedAccountId;
+    private int? selectedGifterAccountId;
+    private int selectedDayRange = 30;
+
+    // ── Summary stats ──
+    private int coinsToday;
+    private long totalCoins;
+    private int dailyAvg;
+    private int bestDay;
+    private string bestDayLabel = "";
+
+    // ── Live refresh ──
+    private System.Threading.Timer? _timer;
+
+    // ── Day range picker options ──
+    private static readonly List<DayRangeOption> dayRangeOptions = new()
+    {
+        new() { Label = "Last 7 days", Days = 7 },
+        new() { Label = "Last 14 days", Days = 14 },
+        new() { Label = "Last 30 days", Days = 30 },
+        new() { Label = "Last 90 days", Days = 90 },
+        new() { Label = "All time", Days = 0 }
+    };
 
     protected override async Task OnInitializedAsync()
     {
-        accounts = TrackerService.CachedAccounts.ToList();
-        allEarnings = await TrackerService.GetDailyCoinEarningsAsync(100);
-        UpdateChartData();
+        await LoadDataAsync();
+
+        // Refresh every 30 seconds — analytics doesn't need per-second updates
+        _timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadDataAsync();
+                StateHasChanged();
+            });
+        }, null, 30_000, 30_000);
     }
+
+    private async Task LoadDataAsync()
+    {
+        accounts = TrackerService.CachedAccounts.ToList();
+
+        // Load archived earnings from DB
+        allEarnings = await TrackerService.GetDailyCoinEarningsAsync(limit: null);
+
+        // Load all gifter summaries from DB
+        await LoadGifterRowsAsync();
+
+        UpdateChartData();
+        UpdateSummaryStats();
+        UpdateAccountEarnings();
+    }
+
+    // ── Chart ──
 
     private void UpdateChartData()
     {
-        if (allEarnings == null) return;
+        if (allEarnings == null || accounts == null) return;
 
-        var query = allEarnings.AsQueryable();
+        var query = allEarnings.AsEnumerable();
+
         if (selectedAccountId.HasValue)
-        {
             query = query.Where(e => e.TikTokAccountId == selectedAccountId.Value);
+
+        if (selectedDayRange > 0)
+        {
+            var cutoff = DateTime.Today.AddDays(-selectedDayRange);
+            query = query.Where(e => e.Date.Date >= cutoff);
         }
 
-        // Aggregate by date
-        chartData = query
+        // Build chart rows from archived data, grouped by date
+        var rows = query
             .GroupBy(e => e.Date.Date)
             .Select(g => new ChartDataItem
             {
@@ -90,19 +307,206 @@
             })
             .OrderBy(i => i.SortDate)
             .ToList();
+
+        // Append today's live CoinsToday so the chart is never missing the current day
+        var todayCoins = 0;
+        if (selectedAccountId.HasValue)
+        {
+            var acc = accounts.FirstOrDefault(a => a.Id == selectedAccountId.Value);
+            todayCoins = acc?.CoinsToday ?? 0;
+        }
+        else
+        {
+            todayCoins = accounts.Sum(a => a.CoinsToday);
+        }
+
+        // Only add a today bar if there's something to show or if we have archived data
+        // (avoids a lone zero bar on a fresh install)
+        if (todayCoins > 0 || rows.Any())
+        {
+            // Remove any archived row for today (edge case: reset just ran)
+            rows.RemoveAll(r => r.SortDate == DateTime.Today);
+
+            rows.Add(new ChartDataItem
+            {
+                DateStr = DateTime.Today.ToString("MMM dd"),
+                Coins = todayCoins,
+                SortDate = DateTime.Today
+            });
+
+            rows = rows.OrderBy(r => r.SortDate).ToList();
+        }
+
+        chartData = rows;
     }
+
+    // ── Summary stats ──
+
+    private void UpdateSummaryStats()
+    {
+        if (accounts == null) { return; }
+
+        coinsToday = accounts.Sum(a => a.CoinsToday);
+
+        var archived = allEarnings?
+            .GroupBy(e => e.Date.Date)
+            .Select(g => g.Sum(e => e.Coins))
+            .ToList() ?? new();
+
+        totalCoins = archived.Sum(c => (long)c) + coinsToday;
+
+        var dayCount = archived.Count + (coinsToday > 0 ? 1 : 0);
+        dailyAvg = dayCount > 0 ? (int)(totalCoins / dayCount) : 0;
+
+        if (archived.Any())
+        {
+            var bestArchived = archived.Max();
+            if (bestArchived >= coinsToday)
+            {
+                bestDay = bestArchived;
+                var bestDate = allEarnings!
+                    .GroupBy(e => e.Date.Date)
+                    .OrderByDescending(g => g.Sum(e => e.Coins))
+                    .First().Key;
+                bestDayLabel = bestDate.ToString("MMM dd");
+            }
+            else
+            {
+                bestDay = coinsToday;
+                bestDayLabel = "Today";
+            }
+        }
+        else
+        {
+            bestDay = coinsToday;
+            bestDayLabel = coinsToday > 0 ? "Today" : "";
+        }
+    }
+
+    // ── Per-account earnings ──
+
+    private void UpdateAccountEarnings()
+    {
+        if (accounts == null) return;
+
+        var summaries = TrackerService.CachedTopGifters;
+
+        accountEarnings = accounts.Select(a =>
+        {
+            var archivedTotal = allEarnings?
+                .Where(e => e.TikTokAccountId == a.Id)
+                .Sum(e => e.Coins) ?? 0;
+
+            var topGifter = summaries
+                .Where(s => s.TikTokAccountId == a.Id)
+                .OrderByDescending(s => s.TotalDiamonds)
+                .FirstOrDefault();
+
+            return new AccountEarningRow
+            {
+                Username = a.Username,
+                Today = a.CoinsToday,
+                AllTime = archivedTotal + a.CoinsToday,
+                TopGifterName = topGifter != null
+                    ? (topGifter.SenderNickname != "unknown" ? topGifter.SenderNickname : topGifter.SenderUsername)
+                    : null,
+                TopGifterDiamonds = topGifter?.TotalDiamonds ?? 0
+            };
+        })
+        .OrderByDescending(r => r.AllTime)
+        .ToList();
+    }
+
+    // ── Top gifters (from DB, not limited to cached 50) ──
+
+    private async Task LoadGifterRowsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var query = db.GifterSummaries
+            .Include(g => g.Account)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (selectedGifterAccountId.HasValue)
+            query = query.Where(s => s.TikTokAccountId == selectedGifterAccountId.Value);
+
+        var rows = await query
+            .OrderByDescending(s => s.TotalDiamonds)
+            .Take(100)
+            .ToListAsync();
+
+        gifterRows = rows.Select((s, i) => new GifterRow
+        {
+            Rank = i + 1,
+            Nickname = s.SenderNickname != "unknown" ? s.SenderNickname : s.SenderUsername,
+            Username = s.SenderUsername,
+            AccountUsername = s.Account?.Username ?? "?",
+            TotalDiamonds = s.TotalDiamonds,
+            TotalGifts = s.TotalGifts,
+            LastGift = s.LastGiftTime
+        }).ToList();
+    }
+
+    // ── Filter callbacks ──
 
     private void OnAccountChanged(object value)
     {
-        if (value is int id) selectedAccountId = id;
-        else selectedAccountId = null;
+        selectedAccountId = value is int id ? id : null;
         UpdateChartData();
     }
+
+    private void OnDayRangeChanged(object value)
+    {
+        selectedDayRange = value is int d ? d : 30;
+        UpdateChartData();
+    }
+
+    private async Task OnGifterAccountChanged(object value)
+    {
+        selectedGifterAccountId = value is int id ? id : null;
+        await LoadGifterRowsAsync();
+    }
+
+    // ── Dispose ──
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    // ── View models ──
 
     public class ChartDataItem
     {
         public string DateStr { get; set; } = "";
         public int Coins { get; set; }
         public DateTime SortDate { get; set; }
+    }
+
+    public class GifterRow
+    {
+        public int Rank { get; set; }
+        public string Nickname { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string AccountUsername { get; set; } = "";
+        public int TotalDiamonds { get; set; }
+        public int TotalGifts { get; set; }
+        public DateTime LastGift { get; set; }
+    }
+
+    public class AccountEarningRow
+    {
+        public string Username { get; set; } = "";
+        public int Today { get; set; }
+        public long AllTime { get; set; }
+        public string? TopGifterName { get; set; }
+        public int TopGifterDiamonds { get; set; }
+    }
+
+    public class DayRangeOption
+    {
+        public string Label { get; set; } = "";
+        public int Days { get; set; }
     }
 }

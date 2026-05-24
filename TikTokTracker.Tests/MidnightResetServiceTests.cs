@@ -200,7 +200,7 @@ public class MidnightResetServiceTests
     }
 
     [Fact]
-    public async Task PerformResetAsync_ShouldCallManualFlush_WhenTrackerServiceIsAvailable()
+    public async Task PerformResetAsync_ShouldCallFlushAndHoldLock_WhenTrackerServiceIsAvailable()
     {
         // Arrange
         var today = new DateTime(2026, 3, 27);
@@ -211,6 +211,9 @@ public class MidnightResetServiceTests
         httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
 
         var trackerMock = new Mock<TikTokTrackerService>(null!, null!, httpClientFactoryMock.Object, null!, null!);
+        var disposableMock = new Mock<IDisposable>();
+        trackerMock.Setup(t => t.FlushAndHoldLockAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(disposableMock.Object);
         _serviceProviderMock.Setup(s => s.GetService(typeof(TikTokTrackerService)))
             .Returns(trackerMock.Object);
 
@@ -220,11 +223,12 @@ public class MidnightResetServiceTests
         await InvokePerformResetAsync(service);
 
         // Assert
-        trackerMock.Verify(t => t.ManualFlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+        trackerMock.Verify(t => t.FlushAndHoldLockAsync(It.IsAny<CancellationToken>()), Times.Once);
+        disposableMock.Verify(d => d.Dispose(), Times.Once); // Lock must be released
     }
 
     [Fact]
-    public async Task PerformResetAsync_ShouldContinue_WhenManualFlushFails()
+    public async Task PerformResetAsync_ShouldContinue_WhenFlushAndHoldLockFails()
     {
         // Arrange
         var today = new DateTime(2026, 3, 27);
@@ -235,7 +239,7 @@ public class MidnightResetServiceTests
         httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
 
         var trackerMock = new Mock<TikTokTrackerService>(null!, null!, httpClientFactoryMock.Object, null!, null!);
-        trackerMock.Setup(t => t.ManualFlushAsync(It.IsAny<CancellationToken>()))
+        trackerMock.Setup(t => t.FlushAndHoldLockAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Flush failed"));
 
         _serviceProviderMock.Setup(s => s.GetService(typeof(TikTokTrackerService)))
@@ -262,5 +266,35 @@ public class MidnightResetServiceTests
         var resetSetting = await db.SystemSettings.FirstOrDefaultAsync(s => s.Key == "LastResetDate");
         Assert.NotNull(resetSetting);
         Assert.Equal(today.ToString("yyyy-MM-dd"), resetSetting.Value);
+    }
+
+    [Fact]
+    public async Task GetLastResetDate_ShouldSeedTodayOnFirstRun()
+    {
+        // Arrange — no LastResetDate in the database
+        var today = new DateTime(2026, 3, 27, 14, 0, 0);
+        _systemClockMock.Setup(c => c.Now).Returns(today);
+        _systemClockMock.Setup(c => c.Today).Returns(today.Date);
+
+        var service = CreateService();
+
+        // Act — run one loop iteration
+        using var cts = new CancellationTokenSource();
+        var method = typeof(MidnightResetService).GetMethod("ExecuteAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var executeTask = method.Invoke(service, new object[] { cts.Token }) as Task;
+        Assert.NotNull(executeTask);
+        await Task.Delay(100);
+        cts.Cancel();
+        await executeTask;
+
+        // Assert — LastResetDate should be seeded as today (no reset triggered)
+        await using var db = new AppDbContext(_dbContextOptions);
+        var setting = await db.SystemSettings.FirstOrDefaultAsync(s => s.Key == "LastResetDate");
+        Assert.NotNull(setting);
+        Assert.Equal("2026-03-27", setting.Value);
+
+        // No archival should have happened (same day)
+        Assert.False(await db.DailyCoinEarnings.AnyAsync());
     }
 }

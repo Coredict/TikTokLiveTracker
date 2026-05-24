@@ -74,8 +74,14 @@ public class MidnightResetService : BackgroundService
             return lastReset.Date;
         }
 
-        // No record yet — assume today so we don't trigger a reset on first run
-        return _systemClock.Today;
+        // First run — seed with today's date so the NEXT midnight triggers a reset.
+        // Without persisting, the fallback would return a moving "today" that always
+        // equals now.Date, making the reset condition permanently false.
+        var today = _systemClock.Today;
+        db.SystemSettings.Add(new SystemSetting { Key = LastResetDateKey, Value = today.ToString("yyyy-MM-dd") });
+        await db.SaveChangesAsync();
+        _logger.LogInformation("First run detected — seeded LastResetDate as {Date}.", today.ToString("yyyy-MM-dd"));
+        return today;
     }
 
     private async Task SaveLastResetDateAsync(DateTime date)
@@ -99,58 +105,71 @@ public class MidnightResetService : BackgroundService
     {
         _logger.LogInformation("Starting midnight reset and coin archival.");
 
-        // Flush any buffered gifts before archiving so today's totals are accurate
+        IDisposable? flushHold = null;
+        var tracker = _serviceProvider.GetService<TikTokTrackerService>();
+
+        // Flush buffered gifts AND hold the lock so no concurrent flush can race
+        // with the CoinsToday = 0 write below.
         try
         {
-            var tracker = _serviceProvider.GetService<TikTokTrackerService>();
             if (tracker != null)
             {
-                _logger.LogInformation("Triggering manual flush of gift buffer before reset.");
-                await tracker.ManualFlushAsync(cancellationToken);
+                _logger.LogInformation("Flushing gift buffer and acquiring flush lock before reset.");
+                flushHold = await tracker.FlushAndHoldLockAsync(cancellationToken);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to trigger manual flush before midnight reset. Some coins might be misattributed to the next day.");
+            _logger.LogWarning(ex, "Failed to flush/lock before midnight reset. Proceeding without lock — some coins might be misattributed.");
         }
 
-        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-
-        var archivalDate = _systemClock.Today.AddDays(-1);
-        var allAccounts = await db.Accounts.ToListAsync(cancellationToken);
-
-        if (allAccounts.Any())
+        try
         {
-            foreach (var account in allAccounts)
-            {
-                _logger.LogInformation("Archiving {Coins} coins for @{Username}", account.CoinsToday, account.Username);
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
 
-                db.DailyCoinEarnings.Add(new DailyCoinEarning
+            var archivalDate = _systemClock.Today.AddDays(-1);
+            var allAccounts = await db.Accounts.ToListAsync(cancellationToken);
+
+            if (allAccounts.Any())
+            {
+                foreach (var account in allAccounts)
                 {
-                    TikTokAccountId = account.Id,
-                    Date = archivalDate,
-                    Coins = account.CoinsToday
-                });
+                    _logger.LogInformation("Archiving {Coins} coins for @{Username}", account.CoinsToday, account.Username);
 
-                account.CoinsToday = 0;
+                    db.DailyCoinEarnings.Add(new DailyCoinEarning
+                    {
+                        TikTokAccountId = account.Id,
+                        Date = archivalDate,
+                        Coins = account.CoinsToday
+                    });
+
+                    account.CoinsToday = 0;
+                }
+
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", allAccounts.Count);
+
+                    await SaveLastResetDateAsync(_systemClock.Today);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save changes during midnight reset.");
+                }
             }
-
-            try
+            else
             {
-                await db.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Successfully archived coins and reset daily totals for {Count} accounts.", allAccounts.Count);
-
+                _logger.LogInformation("No accounts found to archive.");
                 await SaveLastResetDateAsync(_systemClock.Today);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save changes during midnight reset.");
-            }
+
+            // Signal the tracker to refresh its cached accounts immediately
+            tracker?.RefreshAccountCache();
         }
-        else
+        finally
         {
-            _logger.LogInformation("No accounts found to archive.");
-            await SaveLastResetDateAsync(_systemClock.Today);
+            flushHold?.Dispose(); // Release the flush lock
         }
     }
 }
